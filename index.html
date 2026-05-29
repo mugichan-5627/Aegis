@@ -227,6 +227,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           <span class="wl" onclick="this.classList.toggle('alert')">AMAT</span>
           <span class="wl" onclick="this.classList.toggle('alert')">RELIANCE.NS</span>
         </div>
+        <div style="margin:10px 0 14px 0;display:flex;gap:8px">
+          <input type="text" id="watchlist-import-input" placeholder="Import portfolio (e.g. AAPL, MSFT, RELIANCE)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;font-size:11px;border-radius:4px;font-family:Consolas,monospace">
+          <button class="btn prim" onclick="importTickers()" style="padding:6px 12px;font-size:11px">Import</button>
+        </div>
         <div class="section-label">Trigger Thresholds</div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;font-size:11.5px">
@@ -1088,6 +1092,28 @@ function loadWatchlist() {
   } catch(e) {
     return DEFAULT_WATCHLIST;
   }
+}
+
+function importTickers() {
+  const input = document.getElementById('watchlist-import-input');
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  const parsed = val.split(/[\s,;]+/).map(t => t.trim().toUpperCase()).filter(t => t.length > 0);
+  if (!parsed.length) return;
+  saveWatchlist(parsed);
+  renderWatchlist(parsed);
+  
+  // Log to terminal
+  const log = document.getElementById('agent-log');
+  if (log) {
+    const d = new Date(); const ts = d.toTimeString().substring(0,8);
+    const el = document.createElement('div');
+    el.innerHTML = `<span class="tok">${ts} </span><span class="t-inf">portfolio.import</span> — loaded ${parsed.length} tickers: [${parsed.join(', ')}]`;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+  }
+  input.value = '';
 }
 
 function keyForTicker(ticker) {
