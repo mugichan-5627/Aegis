@@ -10,6 +10,9 @@
     "api/valuation.py":   { "maxDuration": 15 },
     "api/codex_patch.py": { "maxDuration": 30 }
   },
+  "crons": [
+    { "path": "/api/watchtower", "schedule": "0 * * * *" }
+  ],
   "routes": [
     { "src": "/api/watchtower",  "dest": "api/watchtower.py" },
     { "src": "/api/tribunal",    "dest": "api/tribunal.py" },

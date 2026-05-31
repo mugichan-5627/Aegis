@@ -211,6 +211,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   </button>
 </div>
 
+<!-- AUTONOMOUS ALERT BANNER -->
+<div id="auto-alert-banner" style="display:none;background:rgba(255,51,68,0.12);border-bottom:1px solid rgba(255,51,68,0.35);padding:10px 24px;display:none;align-items:center;justify-content:space-between;gap:12px">
+  <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+    <span style="color:var(--red);font-size:16px">⚡</span>
+    <span id="auto-alert-text" style="color:var(--text)">Aegis detected critical incidents while you were away — pre-analyzed and ready for review.</span>
+    <span class="tag tag-r" style="font-size:9px">autonomous scan</span>
+  </div>
+  <div style="display:flex;gap:8px;flex-shrink:0">
+    <button class="btn prim" style="font-size:10px;padding:5px 12px" onclick="switchTab('watchtower');dismissBanner()">Review Now</button>
+    <button class="btn" style="font-size:10px;padding:5px 10px" onclick="dismissBanner()">✕</button>
+  </div>
+</div>
+
 <!-- BODY -->
 <div class="body">
 
@@ -227,9 +240,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           <span class="wl" onclick="this.classList.toggle('alert')">AMAT</span>
           <span class="wl" onclick="this.classList.toggle('alert')">RELIANCE.NS</span>
         </div>
-        <div style="margin:10px 0 14px 0;display:flex;gap:8px">
-          <input type="text" id="watchlist-import-input" placeholder="Import portfolio (e.g. AAPL, MSFT, RELIANCE)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;font-size:11px;border-radius:4px;font-family:Consolas,monospace">
-          <button class="btn prim" onclick="importTickers()" style="padding:6px 12px;font-size:11px">Import</button>
+        <div style="margin:10px 0 14px 0;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;gap:8px">
+            <input type="text" id="watchlist-import-input" placeholder="Tickers: AAPL, MSFT, RELIANCE" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 10px;font-size:11px;border-radius:4px;font-family:Consolas,monospace">
+            <button class="btn prim" onclick="importTickers()" style="padding:6px 12px;font-size:11px">Import</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="font-size:10px;color:var(--muted);white-space:nowrap">or upload CSV</label>
+            <input type="file" id="csv-file-input" accept=".csv" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--muted);padding:4px 8px;font-size:10px;border-radius:4px;cursor:pointer" onchange="importCSV(this)">
+          </div>
         </div>
         <div class="section-label">Trigger Thresholds</div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
@@ -1739,8 +1758,97 @@ function uuidv4() {
   });
 }
 
+// ==================== CSV IMPORT ====================
+function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) return;
+    // Detect header row — skip if first cell looks like a label not a ticker
+    const firstCell = lines[0].split(',')[0].trim().toUpperCase();
+    const hasHeader = /^(TICKER|SYMBOL|STOCK|NAME|ASSET)$/.test(firstCell);
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    // Extract first column as ticker
+    const tickers = dataLines
+      .map(l => l.split(',')[0].trim().toUpperCase())
+      .filter(t => t.length > 0 && t.length <= 12 && /^[A-Z0-9.\-^]+$/.test(t));
+    if (!tickers.length) return;
+    saveWatchlist(tickers);
+    renderWatchlist(tickers);
+    const log = document.getElementById('agent-log');
+    if (log) {
+      const ts = new Date().toTimeString().substring(0, 8);
+      const el = document.createElement('div');
+      el.innerHTML = `<span class="tok">${ts} </span><span class="t-inf">portfolio.csv</span> — imported ${tickers.length} tickers from ${file.name}: [${tickers.slice(0, 5).join(', ')}${tickers.length > 5 ? '…' : ''}]`;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ==================== AUTO-LOAD CACHED SCAN + BANNER ====================
+function dismissBanner() {
+  const b = document.getElementById('auto-alert-banner');
+  if (b) b.style.display = 'none';
+}
+
+async function loadCachedScan() {
+  try {
+    const data = await fetchJSON('/api/watchtower', { method: 'GET' }, 6000);
+    if (!data || !Array.isArray(data.incidents) || !data.incidents.length) return;
+    renderIncidents(data.incidents);
+    const ts = data.macro && data.macro.scan_timestamp ? data.macro.scan_timestamp : '';
+    const critical = data.incidents.filter(i => i.severity === 'critical');
+    const highChaos = data.incidents.filter(i => Number(i.chaos_index || 0) > 0.7);
+    if (highChaos.length > 0) {
+      const banner = document.getElementById('auto-alert-banner');
+      const txt = document.getElementById('auto-alert-text');
+      if (banner && txt) {
+        txt.textContent = `Aegis detected ${critical.length} critical incident${critical.length !== 1 ? 's' : ''} in the last autonomous scan${ts ? ' at ' + ts : ''} — pre-analyzed and ready for review.`;
+        banner.style.display = 'flex';
+      }
+    }
+    // Pre-load cached tribunal if available
+    loadCachedTribunal();
+  } catch(e) {
+    // No cached scan — silent, user can scan manually
+  }
+}
+
+async function loadCachedTribunal() {
+  try {
+    const data = await fetchJSON('/api/tribunal', { method: 'GET' }, 4000);
+    if (!data || !data.cached || !data._ticker) return;
+    const key = keyForTicker(data._ticker);
+    if (INCIDENTS[key]) {
+      INCIDENTS[key]._preAnalyzed = true;
+      INCIDENTS[key]._cachedTribunal = data;
+    }
+    // Mark incident card with pre-analyzed badge
+    const list = document.getElementById('incident-list');
+    if (list) {
+      list.querySelectorAll('.inc').forEach(card => {
+        const tickerEl = card.querySelector('.inc-ticker');
+        if (tickerEl && tickerEl.textContent.startsWith(data._ticker) && !card.querySelector('.pre-analyzed-badge')) {
+          const badge = document.createElement('span');
+          badge.className = 'tag tag-g pre-analyzed-badge';
+          badge.style.cssText = 'font-size:9px;margin-left:6px';
+          badge.textContent = 'pre-analyzed';
+          tickerEl.appendChild(badge);
+        }
+      });
+    }
+  } catch(e) {}
+}
+
+// On page load: restore watchlist and fetch cached scan
 renderWatchlist(loadWatchlist());
 updateReviewGate(ACTIVE_ASSUMPTIONS);
+loadCachedScan();
 
 function downloadTask() { alert('In production: codex_task.md downloads as Markdown for direct Codex handoff.'); }
 function downloadMemo() { alert('In production: IC memo downloads as PDF via Markdown → PDF pipeline.'); }

@@ -16,6 +16,8 @@ from lib.agent_swarm import run_tribunal
 
 load_dotenv(ROOT / ".env")
 
+TRIBUNAL_CACHE = Path("/tmp/aegis_last_tribunal.json")
+
 
 def _json_response(handler: BaseHTTPRequestHandler, payload: dict, status: int = 200) -> None:
     body = json.dumps(payload).encode("utf-8")
@@ -23,7 +25,7 @@ def _json_response(handler: BaseHTTPRequestHandler, payload: dict, status: int =
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Access-Control-Allow-Origin", "*")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type")
-    handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -51,6 +53,16 @@ def handle(payload: dict[str, Any]) -> dict:
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         _json_response(self, {"ok": True})
+
+    def do_GET(self) -> None:
+        try:
+            if TRIBUNAL_CACHE.exists():
+                cached = json.loads(TRIBUNAL_CACHE.read_text())
+                _json_response(self, {**cached, "cached": True})
+            else:
+                _json_response(self, {"cached": False})
+        except Exception:
+            _json_response(self, {"cached": False})
 
     def do_POST(self) -> None:
         try:

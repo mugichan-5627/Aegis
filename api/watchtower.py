@@ -31,6 +31,24 @@ from arize_mcp_client import arize_client
 
 load_dotenv(ROOT / ".env")
 
+CACHE_FILE = Path("/tmp/aegis_last_scan.json")
+
+
+def _save_cache(payload: dict) -> None:
+    try:
+        CACHE_FILE.write_text(json.dumps(payload))
+    except Exception:
+        pass
+
+
+def _load_cache() -> dict | None:
+    try:
+        if CACHE_FILE.exists():
+            return json.loads(CACHE_FILE.read_text())
+    except Exception:
+        pass
+    return None
+
 
 def _json_response(handler: BaseHTTPRequestHandler, payload: dict, status: int = 200) -> None:
     body = json.dumps(payload).encode("utf-8")
@@ -159,16 +177,50 @@ def handle(payload: dict[str, Any]) -> dict:
             matching_trace["endpoint"] = arize_client.endpoint_url
             break
 
-    return {
-        "incidents": incidents, 
+    result = {
+        "incidents": incidents,
         "macro": {"vix": round(float(vix), 1), "scan_timestamp": utc_timestamp()},
-        "telemetry": matching_trace
+        "telemetry": matching_trace,
     }
+    _save_cache(result)
+
+    # Auto-trigger tribunal for the first critical incident found
+    critical = [inc for inc in incidents if inc.get("severity") == "critical"]
+    if critical:
+        _auto_tribunal(critical[0])
+
+    return result
+
+
+def _auto_tribunal(incident: dict) -> None:
+    """Run tribunal in background for a critical incident and cache the result."""
+    try:
+        from lib.agent_swarm import run_tribunal
+
+        tribunal_cache = Path("/tmp/aegis_last_tribunal.json")
+        result = run_tribunal(
+            ticker=incident["ticker"],
+            incident=incident["description"],
+            chaos_index=float(incident.get("chaos_index", 0.5)),
+            severity=incident.get("severity", "critical"),
+        )
+        result["_auto"] = True
+        result["_ticker"] = incident["ticker"]
+        tribunal_cache.write_text(json.dumps(result))
+    except Exception:
+        pass
 
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self) -> None:
         _json_response(self, {"ok": True})
+
+    def do_GET(self) -> None:
+        cached = _load_cache()
+        if cached:
+            _json_response(self, {**cached, "cached": True})
+        else:
+            _json_response(self, {"incidents": [], "macro": {}, "cached": False})
 
     def do_POST(self) -> None:
         try:
