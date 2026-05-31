@@ -100,16 +100,25 @@ def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> 
         from openai import OpenAI
 
         client = OpenAI(api_key=key)
-        response = client.responses.create(
-            model="codex-mini-latest",
-            input=(
-                "Generate a concise Python subclass/dataclass stub for an export-control "
-                f"stress module for {ticker} triggered by {trigger_event}. "
-                f"Use these assumptions: {json.dumps(assumptions)}"
-            ),
-            max_output_tokens=500,
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a Python code generator. Return only valid Python code, no markdown fences.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Generate a concise Python subclass/dataclass stub for an export-control "
+                        f"stress module for {ticker} triggered by {trigger_event}. "
+                        f"Use these assumptions: {json.dumps(assumptions)}"
+                    ),
+                },
+            ],
+            max_tokens=500,
         )
-        return getattr(response, "output_text", None)
+        return response.choices[0].message.content
     except Exception:
         return None
 

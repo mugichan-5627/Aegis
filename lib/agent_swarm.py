@@ -7,12 +7,14 @@ import os
 import re
 from typing import Any
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from openai import OpenAI
 from arize_mcp_client import arize_client
 
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
