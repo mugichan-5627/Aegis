@@ -137,7 +137,19 @@ When a user opens the app, incidents are already rendered and a red alert banner
 ### Portfolio import
 
 - **Text input**: comma or space-separated tickers, e.g. `NVDA, TSM, ASML`
-- **CSV upload**: any CSV where the first column contains ticker symbols. Header row is auto-detected and skipped.
+- **CSV upload**: upload a `.csv` file where the first column contains ticker symbols. An optional second column can hold portfolio weights (0–1) or share counts — Aegis uses tickers only for scanning. Header row is auto-detected and skipped. Supports up to 50 tickers.
+
+**Example CSV format:**
+```csv
+ticker,weight
+NVDA,0.30
+TSM,0.25
+AAPL,0.20
+MSFT,0.15
+RELIANCE.NS,0.10
+```
+
+Hover the **ⓘ** button next to the CSV upload in the app for a quick format reminder.
 
 ---
 
