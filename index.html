@@ -1277,31 +1277,57 @@ function runScanFallback() {
   const bar = document.getElementById('scanbar');
   setTimeout(() => bar.style.width = '100%', 50);
   const log = document.getElementById('agent-log');
+  const tickers = loadWatchlist();
+
+  // Build dynamic log messages from actual tickers
   const msgs = [
-    ['t-inf','tavily.live','fetching semiconductor sector — 89 articles found'],
-    ['t-inf','elastic.query','running macro_risk_v4 keyword scan...'],
-    ['t-warn','signal.drawdown','NVDA −9.2% (last 48h, threshold −8%)'],
-    ['t-err','keyword.hit','export control × 47 | GPU ban × 31 | China tech × 63'],
-    ['t-err','trigger.fire','NVDA → INCIDENT_CRITICAL stored'],
-    ['t-warn','geopolitical.scan','Taiwan strait × 23 | PLA exercise × 17'],
-    ['t-err','trigger.fire','TSM → INCIDENT_CRITICAL stored'],
-    ['t-ok','snapshot.save','incidents.json — 3 incidents written, 2 critical'],
+    ['t-inf', 'tavily.live', `fetching news for ${tickers.join(', ')} — scanning risk keywords`],
+    ['t-inf', 'yfinance', `market data stream open — ${tickers.length} tickers`],
+    ['t-warn', 'signal.vix', 'VIX elevated — macro risk threshold armed'],
+    ...tickers.map(t => ['t-warn', `scan.${t}`, `${t} — drawdown and keyword analysis running`]),
+    ['t-ok', 'snapshot.save', `incidents.json — ${tickers.length} incidents written`],
   ];
+
+  // Generate demo incidents from actual tickers
+  const demoIncidents = tickers.map((ticker, i) => {
+    const chaos = Math.round((0.45 + Math.random() * 0.45) * 100) / 100;
+    const sev = chaos >= 0.7 ? 'critical' : chaos >= 0.5 ? 'elevated' : 'watch';
+    const drawdown = -(Math.round((1 + Math.random() * 9) * 10) / 10);
+    const rev = Math.round(15 + Math.random() * 40);
+    const vix = 28.4;
+    const sectors = ['Technology', 'Semiconductor', 'Consumer Cyclical', 'Financial', 'Energy', 'Healthcare'];
+    const sector = sectors[i % sectors.length];
+    return {
+      ticker,
+      description: `${ticker} — ${sector} sector exposure flagged. Geopolitical and macro risk signals detected. Revenue concentration risk under stress scenario.`,
+      chaos_index: chaos,
+      revenue_at_risk_pct: rev,
+      severity: sev,
+      sector,
+      drawdown_pct: drawdown,
+      vix,
+      keyword_hits: Math.round(5 + Math.random() * 40),
+      timestamp: new Date().toTimeString().substring(0, 8),
+    };
+  });
+
   msgs.forEach((m, i) => {
     setTimeout(() => {
-      const d = new Date(); const ts = d.toTimeString().substring(0,8);
+      const ts = new Date().toTimeString().substring(0, 8);
       const el = document.createElement('div');
       el.innerHTML = `<span class="tok">${ts} </span><span class="${m[0]}">${m[1]}</span> — ${m[2]}`;
       log.appendChild(el); log.scrollTop = log.scrollHeight;
       if (i === msgs.length - 1) {
         setTimeout(() => {
+          renderIncidents(demoIncidents);
+          updateAgentLog(demoIncidents);
           btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-scan';
-          document.getElementById('scan-status-txt').textContent = '✓ Scan complete — 2 critical, 1 elevated';
+          document.getElementById('scan-status-txt').textContent = `✓ Demo scan complete — ${demoIncidents.filter(x=>x.severity==='critical').length} critical, ${demoIncidents.filter(x=>x.severity==='elevated').length} elevated`;
           document.getElementById('scan-status-txt').className = 't-ok';
-          addMockWatchtowerTrace(loadWatchlist());
+          addMockWatchtowerTrace(tickers);
         }, 400);
       }
-    }, i * 520);
+    }, i * 420);
   });
 }
 
