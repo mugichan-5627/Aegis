@@ -92,35 +92,89 @@ def _scenario_patch(ticker: str, trigger_event: str, assumptions: dict) -> dict:
     }
 
 
-def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> str | None:
-    key = os.environ.get("OPENAI_API_KEY", None)
-    if not key:
-        return None
-    try:
-        from openai import OpenAI
+def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> str:
+    """Generate Python patch stub — tries OpenAI Codex first, falls back to Nvidia NIM."""
+    prompt = (
+        "Generate a concise Python dataclass and function stub for a stress scenario module "
+        f"for ticker {ticker} triggered by {trigger_event}. "
+        "Include: a dataclass with revenue_haircut_pct, wacc_premium_bps, compliance_timeline_months fields; "
+        "a function apply_stress(base_valuation, scenario) that applies the haircut and WACC delta; "
+        "and 3 pytest function stubs. Return only valid Python, no markdown fences. "
+        f"Use these approved assumptions: {json.dumps(assumptions)}"
+    )
 
-        client = OpenAI(api_key=key)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a Python code generator. Return only valid Python code, no markdown fences.",
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        "Generate a concise Python subclass/dataclass stub for an export-control "
-                        f"stress module for {ticker} triggered by {trigger_event}. "
-                        f"Use these assumptions: {json.dumps(assumptions)}"
-                    ),
-                },
-            ],
-            max_tokens=500,
-        )
-        return response.choices[0].message.content
-    except Exception:
-        return None
+    # Try OpenAI Codex first
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key)
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a Python code generator. Return only valid Python code, no markdown fences."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=600,
+            )
+            code = response.choices[0].message.content
+            if code and code.strip():
+                return code
+        except Exception:
+            pass
+
+    # Fallback to Nvidia NIM
+    nvidia_key = os.environ.get("NVIDIA_API_KEY")
+    if nvidia_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                api_key=nvidia_key,
+                base_url="https://integrate.api.nvidia.com/v1",
+            )
+            response = client.chat.completions.create(
+                model="meta/llama-3.3-70b-instruct",
+                messages=[
+                    {"role": "system", "content": "You are a Python code generator. Return only valid Python code, no markdown fences."},
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=600,
+                temperature=0.2,
+            )
+            code = response.choices[0].message.content
+            if code and code.strip():
+                return f"# Generated via Nvidia NIM (Codex fallback)\n{code}"
+        except Exception:
+            pass
+
+    # Static stub if both APIs unavailable
+    t = ticker.upper()
+    tl = ticker.lower()
+    return f"""# Generated stub — connect NVIDIA_API_KEY or OPENAI_API_KEY for AI-generated code
+from dataclasses import dataclass, field
+
+@dataclass
+class {t}StressScenario:
+    revenue_haircut_pct: float = {assumptions.get('revenue_haircut_pct', 28.5)}
+    wacc_premium_bps: int = {assumptions.get('wacc_premium_bps', 380)}
+    compliance_timeline_months: int = {assumptions.get('compliance_timeline_months', 12)}
+    margin_compression_bps: int = {assumptions.get('margin_compression_bps', 420)}
+
+def apply_stress(base_valuation, scenario: {t}StressScenario):
+    base_valuation.revenue *= (1 - scenario.revenue_haircut_pct / 100)
+    base_valuation.wacc += scenario.wacc_premium_bps / 10000
+    base_valuation.ebitda_margin -= scenario.margin_compression_bps / 10000
+    return base_valuation
+
+def test_stress_{tl}_baseline():
+    pass  # TODO: assert revenue haircut applied correctly
+
+def test_wacc_regulatory_premium():
+    pass  # TODO: assert WACC delta = +{assumptions.get('wacc_premium_bps', 380)}bps
+
+def test_regression_{tl}_golden():
+    pass  # TODO: assert output within ±5% of golden snapshot
+"""
 
 
 def handle(payload: dict[str, Any]) -> dict:

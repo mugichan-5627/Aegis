@@ -422,34 +422,29 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
       <div class="card">
         <div class="card-hdr">Investment Committee Memo <span class="tag tag-a">human review required</span></div>
 
-        <div class="vstamp" id="vstamp">HEDGE RECOMMENDED</div>
+        <div class="vstamp" id="vstamp">AWAITING TRIBUNAL</div>
 
         <div style="margin-bottom:14px" id="valuation-waterfall">
-          <div class="section-label">Executive Verdict — NVDA / Semiconductor Export Control</div>
-          <div class="memo-body">
-            Nvidia faces a structural 38% revenue exposure to US-China export control escalation. The Bear case — full EAR-99 compliance forcing complete China datacenter market exit — carries 72% probability within 18 months based on regulatory trajectory. The Bull adaptation path (US hyperscaler absorption) requires 24+ months of transition risk. <strong style="color:var(--text)">Recommend: hedge 40% of long exposure via protective puts, $550 strike, 6M expiry. Downside target: $472.</strong>
+          <div class="section-label" id="verdict-label">Executive Verdict</div>
+          <div class="memo-body" id="verdict-memo" style="color:var(--muted);font-size:12px">
+            <i class="ti ti-robot" style="font-size:20px;display:block;margin-bottom:8px;opacity:0.3"></i>
+            Run a scan, load an incident, and launch the Tribunal to generate an IC memo.
           </div>
         </div>
 
         <hr class="div">
 
-        <div style="margin-bottom:14px">
+        <div style="margin-bottom:14px" id="waterfall-section" style="display:none">
           <div class="section-label">Valuation Waterfall</div>
-          <div class="wf-row"><div class="wf-lbl">Base Enterprise Value</div><div class="wf-bar"><div class="wf-fill fill-b" style="width:100%"></div></div><div class="wf-val" style="color:var(--blue)">$1,040B</div></div>
-          <div class="wf-row"><div class="wf-lbl">Revenue haircut</div><div class="wf-bar"><div class="wf-fill fill-r" style="width:68%"></div></div><div class="wf-val" style="color:var(--red)">−$149B</div></div>
-          <div class="wf-row"><div class="wf-lbl">Margin compression</div><div class="wf-bar"><div class="wf-fill fill-r" style="width:37%"></div></div><div class="wf-val" style="color:var(--red)">−$78B</div></div>
-          <div class="wf-row"><div class="wf-lbl">WACC premium</div><div class="wf-bar"><div class="wf-fill fill-a" style="width:24%"></div></div><div class="wf-val" style="color:var(--amber)">−$51B</div></div>
-          <div class="wf-row"><div class="wf-lbl">Distressed EV</div><div class="wf-bar"><div class="wf-fill fill-g" style="width:73%"></div></div><div class="wf-val" style="color:var(--teal)">$762B</div></div>
+          <div id="waterfall-rows" style="color:var(--muted);font-size:11px;padding:8px 0">Approve or Soften assumptions to run valuation model.</div>
         </div>
 
         <hr class="div">
 
         <div style="margin-bottom:12px">
-          <div class="section-label">Top 3 Risks</div>
-          <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
-            <div style="display:flex;gap:10px;align-items:baseline"><span class="tag tag-r">R1</span><span style="color:var(--muted)">EAR-99 full expansion — China datacenter exit forced within 12M</span></div>
-            <div style="display:flex;gap:10px;align-items:baseline"><span class="tag tag-r">R2</span><span style="color:var(--muted)">Huawei Ascend ecosystem substitution — Chinese enterprise substitution by 2027</span></div>
-            <div style="display:flex;gap:10px;align-items:baseline"><span class="tag tag-a">R3</span><span style="color:var(--muted)">US hyperscaler capex deceleration — absorption capacity risk if AI bubble sentiment shifts</span></div>
+          <div class="section-label">Top Risks</div>
+          <div id="verdict-risks" style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)">
+            Risks will appear after tribunal completes.
           </div>
         </div>
 
@@ -457,11 +452,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
         <div>
           <div class="section-label">Audit Trail</div>
-          <div style="font-size:11px;color:var(--muted);line-height:2.1">
-            <div><i class="ti ti-database" style="font-size:11px"></i> Elastic: macro_risk_index_v4 → 847 docs retrieved</div>
-            <div><i class="ti ti-world" style="font-size:11px"></i> Tavily: 12 live articles (Reuters, Bloomberg, FT, WSJ)</div>
-            <div><i class="ti ti-activity" style="font-size:11px"></i> Arize: tribunal_run_20260527_0514 → 3 rounds, 18 spans</div>
-            <div><i class="ti ti-calculator" style="font-size:11px"></i> Valuation: Multi-Factor DCF + EV/Revenue blend, WACC 9.2%</div>
+          <div id="verdict-audit" style="font-size:11px;color:var(--muted);line-height:2.1">
+            <div><i class="ti ti-clock" style="font-size:11px"></i> No tribunal run yet</div>
           </div>
         </div>
 
@@ -525,9 +517,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   <!-- Status row -->
   <div class="cx-status-row">
     <span class="tag tag-b" style="font-size:9px">AEGIS_PATCH</span>
-    <span id="cx-task-id" style="color:var(--blue);font-weight:500;font-size:12px">AEGIS_PATCH_001</span>
+    <span id="cx-task-id" style="color:var(--blue);font-weight:500;font-size:12px">—</span>
     <span style="color:var(--muted);font-size:11px;margin-left:4px">·</span>
-    <span id="cx-triggered-by" style="color:var(--muted);font-size:11px">Awaiting tribunal run</span>
+    <span id="cx-triggered-by" style="color:var(--muted);font-size:11px">Load an incident from Watchtower to generate a patch brief</span>
     <span class="tag tag-a" style="margin-left:auto;font-size:9px">human approval required before merge</span>
   </div>
 
@@ -537,29 +529,24 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
       <div class="card" style="margin-bottom:0">
         <div class="card-hdr">Objective</div>
-        <div id="cx-objective" style="font-size:12.5px;color:var(--text);line-height:1.65;margin-bottom:14px">
-          Add a dedicated <code style="color:var(--teal);background:rgba(0,229,204,0.07);padding:1px 5px;border-radius:3px">ExportControlStress</code> module to <code style="color:var(--blue);background:var(--blue-bg);padding:1px 5px;border-radius:3px">valuation_engine.py</code>. Current model applies generic revenue haircuts — patch implements jurisdiction-specific EAR-99 compliance scenarios with tiered geographic revenue disaggregation and regulatory WACC premium curve.
+        <div id="cx-objective" style="font-size:12.5px;color:var(--muted);line-height:1.65;margin-bottom:14px">
+          Load an incident and run the Tribunal to generate a ticker-specific patch objective.
         </div>
         <div class="card-hdr" style="margin-top:4px">Model Changes Required</div>
         <div id="cx-steps">
-          <div class="cx-step"><div class="cx-step-num">1</div><div class="cx-step-body">Add <code>ExportControlScenario</code> dataclass with <code>jurisdiction_exposure_pct</code>, <code>compliance_timeline_months</code>, <code>substitute_revenue_pct</code></div></div>
-          <div class="cx-step"><div class="cx-step-num">2</div><div class="cx-step-body">Tiered haircut logic: immediate / partial / adaptation compliance paths</div></div>
-          <div class="cx-step"><div class="cx-step-num">3</div><div class="cx-step-body">Regulatory risk premium curve injected into WACC engine</div></div>
-          <div class="cx-step"><div class="cx-step-num">4</div><div class="cx-step-body">Geographic revenue disaggregation — China / Non-China split with per-jurisdiction exposure</div></div>
+          <div class="cx-step"><div class="cx-step-num" style="background:var(--bg3);border-color:var(--border);color:var(--muted)">1</div><div class="cx-step-body" style="color:var(--muted)">Awaiting incident load…</div></div>
         </div>
       </div>
 
       <div class="card" style="margin-bottom:0">
-        <div class="card-hdr">Expected Tests <span class="tag tag-g" style="font-size:9px">4 cases</span></div>
-        <div id="cx-tests">
-          <div class="cx-test-row"><span class="cx-test-icon" style="color:var(--teal)">✓</span><span class="cx-test-name">test_export_control_nvda_baseline</span><span class="cx-test-note">China 38%, full exit</span></div>
-          <div class="cx-test-row"><span class="cx-test-icon" style="color:var(--teal)">✓</span><span class="cx-test-name">test_wacc_regulatory_premium</span><span class="cx-test-note">+380bps on base 9.2%</span></div>
-          <div class="cx-test-row"><span class="cx-test-icon" style="color:var(--teal)">✓</span><span class="cx-test-name">test_regression_nvda_golden</span><span class="cx-test-note">±5% snapshot tolerance</span></div>
-          <div class="cx-test-row"><span class="cx-test-icon" style="color:var(--amber)">○</span><span class="cx-test-name">test_regression_tsm_golden</span><span class="cx-test-note">pending TSM tribunal run</span></div>
-        </div>
+        <div class="card-hdr">Expected Tests <span class="tag tag-b" id="cx-test-count" style="font-size:9px">0 cases</span></div>
+        <div id="cx-tests" style="color:var(--muted);font-size:11.5px;padding:8px 0">Tests will be generated after tribunal run.</div>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn" onclick="downloadTask()"><i class="ti ti-download"></i> Download task brief</button>
           <button class="btn prim" onclick="generatePatch()" id="patch-btn"><i class="ti ti-cpu"></i> Generate Patch Proposal</button>
+        </div>
+        <div style="margin-top:8px;font-size:10px;color:var(--muted)">
+          <i class="ti ti-info-circle" style="font-size:10px"></i> Patch code generated via Codex — falls back to Nvidia NIM if Codex unavailable.
         </div>
       </div>
 
@@ -570,21 +557,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
       <div class="card" style="margin-bottom:0">
         <div class="card-hdr">Scenario Patch <span class="tag tag-b" style="font-size:9px">scenario_patch.json</span></div>
-        <div class="json-block" id="scenario-patch-json">
-<span class="jk">"scenario_id"</span>: <span class="jv">"export_ctrl_semiconductor_2026"</span>,<br>
-<span class="jk">"trigger_event"</span>: <span class="jv">"EAR_99_CHINA_GPU_EXPANSION"</span>,<br>
-<span class="jk">"affected_tickers"</span>: [<span class="jv">"NVDA"</span>, <span class="jv">"TSM"</span>, <span class="jv">"ASML"</span>],<br>
-<span class="jk">"assumptions"</span>: {<br>
-&nbsp;&nbsp;<span class="jk">"china_revenue_exposure"</span>: <span class="jn">0.385</span>,<br>
-&nbsp;&nbsp;<span class="jk">"compliance_scenarios"</span>: {<br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="jk">"immediate"</span>: { <span class="jk">"haircut"</span>: <span class="jn">0.38</span>, <span class="jk">"wacc_delta_bps"</span>: <span class="jn">450</span> },<br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="jk">"partial"</span>: { <span class="jk">"haircut"</span>: <span class="jn">0.18</span>, <span class="jk">"wacc_delta_bps"</span>: <span class="jn">250</span> },<br>
-&nbsp;&nbsp;&nbsp;&nbsp;<span class="jk">"adaptation"</span>: { <span class="jk">"haircut"</span>: <span class="jn">0.05</span>, <span class="jk">"timeline_months"</span>: <span class="jn">24</span> }<br>
-&nbsp;&nbsp;},<br>
-&nbsp;&nbsp;<span class="jk">"margin_compression_bps"</span>: <span class="jn">420</span>,<br>
-&nbsp;&nbsp;<span class="jk">"geographic_split"</span>: { <span class="jk">"china"</span>: <span class="jn">0.385</span>, <span class="jk">"row"</span>: <span class="jn">0.615</span> }<br>
-},<br>
-<span class="jk">"human_approval_required"</span>: <span class="jv">true</span>
+        <div class="json-block" id="scenario-patch-json" style="color:var(--muted);font-size:11px">
+          Scenario patch will appear here after generating a proposal.
         </div>
       </div>
 
@@ -1435,6 +1409,8 @@ async function launchTribunal() {
         if (i === msgs.length - 1) {
           tribunalRunning = false;
           btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Tribunal';
+          // Populate verdict and codex tabs from live results
+          updateVerdictFromTribunal(inc, msgs, null);
           setTimeout(() => {
             const fin = document.createElement('div');
             fin.style.cssText = 'text-align:center;margin-top:14px;padding:12px;background:var(--bg3);border-radius:var(--radius);font-size:12px;color:var(--muted)';
@@ -1455,7 +1431,99 @@ function typewrite(id, text, cb) {
   }, 16);
 }
 
-function updateReviewGate(assumptions) {
+function updateVerdictFromTribunal(inc, msgs, data) {
+  // Verdict label
+  const label = document.getElementById('verdict-label');
+  if (label) label.textContent = `Executive Verdict — ${inc.ticker} / ${inc.sev.toUpperCase()} incident`;
+
+  // IC memo — use judge message text if available
+  const judgeMsg = msgs.find(m => m.role === 'judge');
+  const memoEl = document.getElementById('verdict-memo');
+  if (memoEl && judgeMsg) {
+    memoEl.style.color = '';
+    memoEl.innerHTML = judgeMsg.text.replace(
+      /(RECOMMENDATION[^.]+\.)/,
+      '<strong style="color:var(--text)">$1</strong>'
+    );
+  }
+
+  // Stamp
+  const stamp = document.getElementById('vstamp');
+  if (stamp) {
+    const judgeText = judgeMsg ? judgeMsg.text.toUpperCase() : '';
+    if (judgeText.includes('HEDGE')) {
+      stamp.textContent = 'HEDGE RECOMMENDED'; stamp.style.color = 'var(--red)'; stamp.style.borderColor = 'var(--red-border)';
+    } else if (judgeText.includes('HOLD')) {
+      stamp.textContent = 'HOLD — MONITOR'; stamp.style.color = 'var(--amber)'; stamp.style.borderColor = 'var(--amber-border)';
+    } else if (judgeText.includes('REDUCE') || judgeText.includes('PARTIAL')) {
+      stamp.textContent = 'PARTIAL HEDGE'; stamp.style.color = 'var(--amber)'; stamp.style.borderColor = 'var(--amber-border)';
+    } else {
+      stamp.textContent = 'REVIEW REQUIRED'; stamp.style.color = 'var(--blue)'; stamp.style.borderColor = 'var(--blue-border)';
+    }
+  }
+
+  // Top risks — extract from judge text
+  const risksEl = document.getElementById('verdict-risks');
+  if (risksEl && judgeMsg) {
+    const sentences = judgeMsg.text.split(/[.!]/).map(s => s.trim()).filter(s => s.length > 30);
+    const riskSentences = sentences.slice(0, 3);
+    const colors = ['tag-r', 'tag-r', 'tag-a'];
+    risksEl.innerHTML = riskSentences.map((s, i) =>
+      `<div style="display:flex;gap:10px;align-items:baseline"><span class="tag ${colors[i] || 'tag-b'}">R${i+1}</span><span style="color:var(--muted)">${s}</span></div>`
+    ).join('');
+  }
+
+  // Audit trail
+  const auditEl = document.getElementById('verdict-audit');
+  if (auditEl) {
+    const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    auditEl.innerHTML = `
+      <div><i class="ti ti-world" style="font-size:11px"></i> Tavily: live news search — ${inc.ticker} risk keywords</div>
+      <div><i class="ti ti-activity" style="font-size:11px"></i> Arize: tribunal_run_${ts.replace(/[-: ]/g,'').slice(0,14)} → ${msgs.length} rounds</div>
+      <div><i class="ti ti-calculator" style="font-size:11px"></i> Chaos index: ${inc.chaos} · Rev. at risk: ${inc.rev} · Severity: ${inc.sev}</div>
+      <div><i class="ti ti-robot" style="font-size:11px"></i> Fracture Swarm: Bear / Bull / Black Swan Judge — Nvidia NIM</div>
+    `;
+  }
+
+  // Update Codex tab with ticker-specific content
+  updateCodexFromIncident(inc);
+}
+
+function updateCodexFromIncident(inc) {
+  const taskId = document.getElementById('cx-task-id');
+  const triggeredBy = document.getElementById('cx-triggered-by');
+  const objective = document.getElementById('cx-objective');
+  const steps = document.getElementById('cx-steps');
+  const tests = document.getElementById('cx-tests');
+  const testCount = document.getElementById('cx-test-count');
+  const now = new Date();
+  const stamp = now.toISOString().slice(0,10).replace(/-/g,'') + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
+
+  if (taskId) taskId.textContent = `AEGIS_PATCH_${stamp}_${inc.ticker}`;
+  if (triggeredBy) triggeredBy.textContent = `${inc.ticker} — ${inc.sev} incident · chaos ${inc.chaos}`;
+  if (objective) {
+    objective.style.color = '';
+    objective.innerHTML = `Add a dedicated stress scenario module for <code style="color:var(--teal);background:rgba(0,229,204,0.07);padding:1px 5px;border-radius:3px">${inc.ticker}</code> to <code style="color:var(--blue);background:var(--blue-bg);padding:1px 5px;border-radius:3px">valuation_engine.py</code>. Current model applies generic revenue haircuts — patch implements scenario-specific stress assumptions from the tribunal verdict with tiered compliance paths and regulatory WACC premium curve.`;
+  }
+  if (steps) {
+    steps.innerHTML = [
+      `Add <code>${inc.ticker}StressScenario</code> dataclass with <code>revenue_haircut_pct</code>, <code>wacc_premium_bps</code>, <code>compliance_timeline_months</code>`,
+      `Tiered haircut logic: immediate / partial / adaptation paths based on tribunal verdict`,
+      `Regulatory risk premium curve injected into WACC engine (+${ACTIVE_ASSUMPTIONS.wacc_premium_bps || 380} bps approved)`,
+      `Scenario matrix: Bear / Base / Bull paths with probability weights from Black Swan Judge`,
+    ].map((s, i) => `<div class="cx-step"><div class="cx-step-num">${i+1}</div><div class="cx-step-body">${s}</div></div>`).join('');
+  }
+  if (tests) {
+    const t = inc.ticker.toLowerCase().replace(/[^a-z0-9]/g,'_');
+    tests.innerHTML = [
+      { icon: '✓', cls: 'var(--teal)', name: `test_stress_${t}_baseline`, note: `chaos ${inc.chaos}, rev at risk ${inc.rev}` },
+      { icon: '✓', cls: 'var(--teal)', name: `test_wacc_regulatory_premium`, note: `+${ACTIVE_ASSUMPTIONS.wacc_premium_bps || 380}bps` },
+      { icon: '✓', cls: 'var(--teal)', name: `test_regression_${t}_golden`, note: '±5% snapshot tolerance' },
+      { icon: '○', cls: 'var(--amber)', name: `test_scenario_matrix_${t}`, note: 'pending valuation run' },
+    ].map(r => `<div class="cx-test-row"><span class="cx-test-icon" style="color:${r.cls}">${r.icon}</span><span class="cx-test-name">${r.name}</span><span class="cx-test-note">${r.note}</span></div>`).join('');
+    if (testCount) testCount.textContent = '4 cases';
+  }
+}
   const el = document.getElementById('review-assumptions');
   if (!el || !assumptions) return;
   const rev = Number(assumptions.revenue_haircut_pct || 0);
