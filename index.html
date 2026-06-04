@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AEGIS CODEX</title>
+<title>AEGIS</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.x/tabler-icons.min.css">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;500;700&display=swap');
@@ -161,7 +161,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .tip-box{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#0f1828;border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;font-size:11px;line-height:1.6;color:var(--text);width:260px;z-index:200;white-space:normal;box-shadow:0 4px 20px rgba(0,0,0,0.5)}
 .tip-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#0f1828}
 .tip-wrap:hover .tip-box{display:block}
-/* ---- CODEX REDESIGN ---- */
+/* ---- LLM PATCH REDESIGN ---- */
 .cx-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .cx-status-row{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);margin-bottom:12px;border:1px solid var(--border)}
 .cx-step{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px}
@@ -185,7 +185,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .section-label{font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;margin-top:2px}
 /* memo body */
 .memo-body{font-size:12.5px;line-height:1.7;color:var(--text)}
-/* codex field */
+/* llm field */
 .cx-field{display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
 .cx-k{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted)}
 .cx-v{color:var(--text);line-height:1.5}
@@ -197,10 +197,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
 <!-- HEADER -->
 <div class="hdr">
-  <div class="logo"><span class="accent">AEGIS</span> CODEX</div>
+  <div class="logo"><span class="accent">AEGIS</span></div>
   <div class="hdr-right">
     <div class="live-ind"><span class="live-dot"></span>Watchtower active</div>
-    <div class="live-ind"><span class="live-dot" style="background:var(--blue)"></span>Codex ready</div>
+    <div class="live-ind"><span class="live-dot" style="background:var(--blue)"></span>LLM ready</div>
     <div class="live-ind"><span class="live-dot" style="background:var(--amber)"></span>Arize tracing</div>
     <div class="threat-badge">ELEVATED</div>
   </div>
@@ -209,7 +209,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 <!-- NAV -->
 <div class="nav">
   <button class="nav-btn active" onclick="switchTab('watchtower')">
-    <i class="ti ti-radar-2"></i> Watchtower <span class="nav-pill" id="inc-count">3</span>
+    <i class="ti ti-radar-2"></i> Watchtower <span class="nav-pill" id="inc-count">0</span>
   </button>
   <button class="nav-btn" onclick="switchTab('tribunal')">
     <i class="ti ti-flame"></i> Tribunal
@@ -217,8 +217,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   <button class="nav-btn" onclick="switchTab('verdict')">
     <i class="ti ti-file-check"></i> Verdict
   </button>
-  <button class="nav-btn" onclick="switchTab('codex')">
-    <i class="ti ti-code"></i> Codex
+  <button class="nav-btn" onclick="switchTab('llm')">
+    <i class="ti ti-code"></i> LLM Patch
   </button>
   <button class="nav-btn" onclick="switchTab('radar')">
     <i class="ti ti-radar-2"></i> Threat Orbit
@@ -249,13 +249,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   <div class="g2">
     <div>
       <div class="card">
-        <div class="card-hdr">Watchlist <span><span class="tag tag-r">2 triggered</span></span></div>
+        <div class="card-hdr">Watchlist <span id="watchlist-summary-badge"><span class="tag tag-b">monitoring</span></span></div>
         <div class="wlc" id="watchlist-chips">
-          <span class="wl alert" title="Critical — export control trigger">NVDA</span>
-          <span class="wl alert" title="Critical — geopolitical proximity">TSM</span>
-          <span class="wl" onclick="this.classList.toggle('alert')">ASML</span>
-          <span class="wl" onclick="this.classList.toggle('alert')">AMAT</span>
-          <span class="wl" onclick="this.classList.toggle('alert')">RELIANCE.NS</span>
+          <span class="wl">NVDA</span>
+          <span class="wl">TSM</span>
+          <span class="wl">ASML</span>
+          <span class="wl">AMAT</span>
+          <span class="wl">RELIANCE.NS</span>
         </div>
         <div style="margin:10px 0 14px 0;display:flex;flex-direction:column;gap:6px">
           <div style="display:flex;gap:8px">
@@ -284,19 +284,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;font-size:11.5px">
             <span style="color:var(--muted)">VIX spike > 25</span>
-            <span class="tag tag-a">armed · VIX 28.4</span>
+            <span class="tag tag-b" id="thresh-vix">standby</span>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:11.5px">
             <span style="color:var(--muted)">Ticker drawdown > 8%</span>
-            <span class="tag tag-r">triggered · NVDA −9.2%</span>
+            <span class="tag tag-b" id="thresh-drawdown">standby</span>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:11.5px">
             <span style="color:var(--muted)">Risk keyword match</span>
-            <span class="tag tag-g">scanning</span>
+            <span class="tag tag-b" id="thresh-keyword">standby</span>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:11.5px">
             <span style="color:var(--muted)">Sector geopolitical flag</span>
-            <span class="tag tag-r">triggered · semiconductor</span>
+            <span class="tag tag-b" id="thresh-geo">standby</span>
           </div>
         </div>
         <div id="scan-status-wrap" style="display:none;margin-bottom:10px">
@@ -319,15 +319,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
       <div class="card" style="height:100%">
         <div class="card-hdr">Autonomous Agent Log <span class="tag tag-g">live</span></div>
         <div class="term" id="agent-log">
-          <div><span class="tok">05:12:00 </span><span class="t-inf">watchtower.init</span> — monitoring 5 tickers</div>
-          <div><span class="tok">05:12:07 </span><span class="t-ok">elastic.mcp</span> — macro_risk_index_v4 loaded (847 docs)</div>
-          <div><span class="tok">05:12:11 </span><span class="t-ok">tavily.search</span> — live news feed active</div>
-          <div><span class="tok">05:12:19 </span><span class="t-dim">yfinance</span> — market data stream open</div>
-          <div><span class="tok">05:13:04 </span><span class="t-warn">signal.vix</span> — VIX 28.4 ↑ (threshold 25.0)</div>
-          <div><span class="tok">05:13:31 </span><span class="t-err">trigger.NVDA</span> — drawdown −9.2%, "export control" ×47</div>
-          <div><span class="tok">05:13:33 </span><span class="t-err">trigger.TSM</span> — geopolitical proximity, "strait" ×23</div>
-          <div><span class="tok">05:13:35 </span><span class="t-warn">action.queue</span> — 2 incidents → HUMAN REVIEW REQUIRED</div>
-          <div><span class="tok">05:13:36 </span><span class="t-ok">snapshot.save</span> — data/incidents.json written</div>
+          <div><span class="tok">00:00:00 </span><span class="t-inf">watchtower.init</span> — standby · awaiting scan</div>
         </div>
       </div>
     </div>
@@ -335,65 +327,23 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
   <!-- INCIDENT QUEUE -->
   <div class="card">
-    <div class="card-hdr">Incident Queue <span id="incident-summary"><span class="tag tag-r">2 critical</span><span class="tag tag-a">1 elevated</span></span></div>
+    <div class="card-hdr">Incident Queue <span id="incident-summary"><span class="tag tag-b">0 active</span></span></div>
     <div id="incident-list">
-
-    <div class="inc" onclick="loadAndGo('nvda')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="inc-ticker">NVDA — Nvidia Corp.</div>
-        <div><span class="tag tag-r">critical</span><span class="tag tag-a">semiconductor</span></div>
+      <div style="text-align:center;padding:40px 20px;color:var(--muted);font-size:12px">
+        No active incidents loaded. Click "Scan Watchlist" to detect risks.
       </div>
-      <div class="inc-desc">US-China semiconductor export control escalation — EAR-99 expansion to H100/A100 successors expected within Q3. Full China datacenter market exit forced. 23% revenue concentration risk materialises.</div>
-      <div class="inc-meta">
-        <span><i class="ti ti-clock" style="font-size:10px"></i> 05:13:31</span>
-        <span>VIX 28.4</span>
-        <span>Rev. at risk: 38%</span>
-        <span>Chaos: 0.76</span>
-        <span>Drawdown: −9.2%</span>
-      </div>
-    </div>
-
-    <div class="inc" onclick="loadAndGo('tsm')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="inc-ticker">TSM — Taiwan Semiconductor Mfg.</div>
-        <div><span class="tag tag-r">critical</span><span class="tag tag-b">geopolitical</span></div>
-      </div>
-      <div class="inc-desc">Cross-strait military posturing escalation — PLA naval exercises resuming adjacent to TSMC N3/N2 fab corridors. Insurance underwriter withdrawal notices issued to 4 major fabs.</div>
-      <div class="inc-meta">
-        <span><i class="ti ti-clock" style="font-size:10px"></i> 05:13:33</span>
-        <span>VIX 28.4</span>
-        <span>Rev. at risk: 55%</span>
-        <span>Chaos: 0.81</span>
-        <span>Drawdown: −7.1%</span>
-      </div>
-    </div>
-
-    <div class="inc amb" onclick="loadAndGo('asml')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div class="inc-ticker">ASML — ASML Holding N.V.</div>
-        <div><span class="tag tag-a">elevated</span><span class="tag tag-b">regulatory</span></div>
-      </div>
-      <div class="inc-desc">EUV export license renewal under joint US-Dutch review. 18-month license cycle due Q4 2026. China accounted for 29% of shipments. Diplomatic pressure escalating.</div>
-      <div class="inc-meta">
-        <span><i class="ti ti-clock" style="font-size:10px"></i> 05:13:41</span>
-        <span>VIX 28.4</span>
-        <span>Rev. at risk: 21%</span>
-        <span>Chaos: 0.61</span>
-        <span>Drawdown: −3.4%</span>
-      </div>
-    </div>
     </div>
   </div>
 </div><!-- /watchtower -->
 
 <!-- =================== TRIBUNAL =================== -->
 <div class="panel" id="panel-tribunal">
-  <div class="card" style="border-left:3px solid var(--red)">
-    <div class="card-hdr">Active Incident — <span id="tri-ticker">NVDA</span> &nbsp;<span class="tag tag-r blink" id="tri-sev">critical</span></div>
-    <div id="tri-desc" style="font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.5">US-China semiconductor export control escalation — EAR-99 expansion to H100/A100 successors. Full China market exit likely Q3 2026.</div>
+  <div class="card" id="tri-card" style="border-left:3px solid var(--border)">
+    <div class="card-hdr">Active Incident — <span id="tri-ticker">—</span> &nbsp;<span class="tag tag-b" id="tri-sev" style="display:none">standby</span></div>
+    <div id="tri-desc" style="font-size:12.5px;color:var(--muted);margin-bottom:14px;line-height:1.5">No active incident loaded. Load an incident from Watchtower to launch Tribunal.</div>
     <div class="g4">
-      <div class="mc"><div class="mc-v amb" id="tri-chaos">0.76</div><div class="mc-l">Chaos Index</div></div>
-      <div class="mc"><div class="mc-v red" id="tri-rev">38%</div><div class="mc-l">Rev. at Risk</div></div>
+      <div class="mc"><div class="mc-v" id="tri-chaos">—</div><div class="mc-l">Chaos Index</div></div>
+      <div class="mc"><div class="mc-v" id="tri-rev">—</div><div class="mc-l">Rev. at Risk</div></div>
       <div class="mc"><div class="mc-v" id="tri-bear-score">—</div><div class="mc-l">Bear Score</div></div>
       <div class="mc"><div class="mc-v" id="tri-bull-score">—</div><div class="mc-l">Bull Score</div></div>
     </div>
@@ -459,7 +409,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
         <div style="margin-top:14px;display:flex;gap:8px">
           <button class="btn" onclick="downloadMemo()"><i class="ti ti-download"></i> Download Memo</button>
-          <button class="btn amb" onclick="switchTab('codex')"><i class="ti ti-code"></i> View Codex Patch →</button>
+          <button class="btn amb" onclick="switchTab('llm')"><i class="ti ti-code"></i> View LLM Patch →</button>
         </div>
       </div>
     </div>
@@ -495,8 +445,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
   </div>
 </div><!-- /verdict -->
 
-<!-- =================== CODEX =================== -->
-<div class="panel" id="panel-codex">
+<!-- =================== LLM PATCH =================== -->
+<div class="panel" id="panel-llm">
 
   <!-- Status row -->
   <div class="cx-status-row">
@@ -530,7 +480,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           <button class="btn prim" onclick="generatePatch()" id="patch-btn"><i class="ti ti-cpu"></i> Generate Patch Proposal</button>
         </div>
         <div style="margin-top:8px;font-size:10px;color:var(--muted)">
-          <i class="ti ti-info-circle" style="font-size:10px"></i> Patch code generated via Codex — falls back to Nvidia NIM if Codex unavailable.
+          <i class="ti ti-info-circle" style="font-size:10px"></i> Patch code generated via LLM — falls back to Nvidia NIM if primary model unavailable.
         </div>
       </div>
 
@@ -547,7 +497,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
       </div>
 
       <div class="card" id="patch-output" style="margin-bottom:0;display:none">
-        <div class="card-hdr">Generated Patch Preview <span class="tag tag-g" style="font-size:9px">codex proposal</span></div>
+        <div class="card-hdr">Generated Patch Preview <span class="tag tag-g" style="font-size:9px">LLM proposal</span></div>
         <div class="code-patch" id="patch-content" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;font-size:11px;line-height:2;max-height:220px;overflow-y:auto;font-family:var(--mono)"></div>
         <div style="margin-top:10px;display:flex;gap:8px">
           <button class="btn grn" onclick="reviewAction('approve');switchTab('verdict')"><i class="ti ti-check"></i> Approve & apply</button>
@@ -557,7 +507,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 
     </div>
   </div>
-</div><!-- /codex -->
+</div><!-- /llm -->
 
 <!-- =================== THREAT ORBIT RADAR =================== -->
 <div class="panel" id="panel-radar">
@@ -780,7 +730,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 <div class="status-bar">
   <div class="status-item"><span class="live-dot" style="width:5px;height:5px;background:var(--teal)"></span>Arize Phoenix: tracing</div>
   <div class="status-item"><span class="live-dot" style="width:5px;height:5px;background:var(--blue)"></span>Elastic MCP: connected</div>
-  <div class="status-item"><span class="live-dot" style="width:5px;height:5px;background:var(--amber)"></span>Aegis Codex: standby</div>
+  <div class="status-item"><span class="live-dot" style="width:5px;height:5px;background:var(--amber)"></span>Aegis Agent: standby</div>
   <div class="status-item" style="margin-left:auto;color:var(--muted)" id="clock">—</div>
 </div>
 
@@ -874,7 +824,7 @@ function initOrbitCanvas() {
     ctx.fillStyle = '#ff3344'; ctx.font = 'bold 9px JetBrains Mono';
     ctx.textAlign = 'center'; ctx.fillText('AEGIS', cx, cy + 3);
     ctx.fillStyle = 'rgba(255,51,68,0.5)'; ctx.font = '7px JetBrains Mono';
-    ctx.fillText('CODEX', cx, cy + 13);
+    ctx.fillText('SYSTEM', cx, cy + 13);
     ctx.textAlign = 'left';
 
     // orbit + tick positions
@@ -1087,12 +1037,7 @@ function switchTab(tab) {
 }
 
 const DEFAULT_WATCHLIST = ['NVDA','TSM','ASML','AMAT','RELIANCE.NS'];
-let ACTIVE_ASSUMPTIONS = {
-  revenue_haircut_pct: 28.5,
-  margin_compression_bps: 420,
-  wacc_premium_bps: 380,
-  terminal_growth_delta: -1.4
-};
+let ACTIVE_ASSUMPTIONS = null;
 
 function saveWatchlist(tickers) {
   localStorage.setItem('aegis_watchlist', JSON.stringify(tickers));
@@ -1336,7 +1281,7 @@ function loadAndGo(id) {
   document.getElementById('debate-stream').innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px">Incident loaded: <strong style="color:var(--text)">${inc.ticker}</strong>. Click Launch Tribunal.</div>`;
   const btn = document.getElementById('tri-btn'); btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> Launch Tribunal';
 
-  // Update Codex tab task brief
+  // Update LLM tab task brief
   const now = new Date();
   const stamp = now.toISOString().slice(0,10).replace(/-/g,'') + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
   const taskId = document.getElementById('cx-task-id');
@@ -1445,7 +1390,7 @@ async function launchTribunal() {
         if (i === msgs.length - 1) {
           tribunalRunning = false;
           btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Tribunal';
-          // Populate verdict and codex tabs from live results
+          // Populate verdict and llm tabs from live results
           updateVerdictFromTribunal(inc, msgs, null);
           setTimeout(() => {
             const fin = document.createElement('div');
@@ -1521,19 +1466,18 @@ function updateVerdictFromTribunal(inc, msgs, data) {
     `;
   }
 
-  // Update Codex tab with ticker-specific content
-  updateCodexFromIncident(inc);
+  // Update LLM Patch tab with ticker-specific content
+  updateLlmFromIncident(inc);
 }
 
-function updateCodexFromIncident(inc) {
+function updateLlmFromIncident(inc) {
   const taskId = document.getElementById('cx-task-id');
   const triggeredBy = document.getElementById('cx-triggered-by');
   const objective = document.getElementById('cx-objective');
   const steps = document.getElementById('cx-steps');
   const tests = document.getElementById('cx-tests');
   const testCount = document.getElementById('cx-test-count');
-  const now = new Date();
-  const stamp = now.toISOString().slice(0,10).replace(/-/g,'') + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
+  const assumptions = ACTIVE_ASSUMPTIONS || {};
 
   if (taskId) taskId.textContent = `AEGIS_PATCH_${stamp}_${inc.ticker}`;
   if (triggeredBy) triggeredBy.textContent = `${inc.ticker} — ${inc.sev} incident · chaos ${inc.chaos}`;
@@ -1545,7 +1489,7 @@ function updateCodexFromIncident(inc) {
     steps.innerHTML = [
       `Add <code>${inc.ticker}StressScenario</code> dataclass with <code>revenue_haircut_pct</code>, <code>wacc_premium_bps</code>, <code>compliance_timeline_months</code>`,
       `Tiered haircut logic: immediate / partial / adaptation paths based on tribunal verdict`,
-      `Regulatory risk premium curve injected into WACC engine (+${ACTIVE_ASSUMPTIONS.wacc_premium_bps || 380} bps approved)`,
+      `Regulatory risk premium curve injected into WACC engine (+${assumptions.wacc_premium_bps || 380} bps approved)`,
       `Scenario matrix: Bear / Base / Bull paths with probability weights from Black Swan Judge`,
     ].map((s, i) => `<div class="cx-step"><div class="cx-step-num">${i+1}</div><div class="cx-step-body">${s}</div></div>`).join('');
   }
@@ -1553,7 +1497,7 @@ function updateCodexFromIncident(inc) {
     const t = inc.ticker.toLowerCase().replace(/[^a-z0-9]/g,'_');
     tests.innerHTML = [
       { icon: '✓', cls: 'var(--teal)', name: `test_stress_${t}_baseline`, note: `chaos ${inc.chaos}, rev at risk ${inc.rev}` },
-      { icon: '✓', cls: 'var(--teal)', name: `test_wacc_regulatory_premium`, note: `+${ACTIVE_ASSUMPTIONS.wacc_premium_bps || 380}bps` },
+      { icon: '✓', cls: 'var(--teal)', name: `test_wacc_regulatory_premium`, note: `+${assumptions.wacc_premium_bps || 380}bps` },
       { icon: '✓', cls: 'var(--teal)', name: `test_regression_${t}_golden`, note: '±5% snapshot tolerance' },
       { icon: '○', cls: 'var(--amber)', name: `test_scenario_matrix_${t}`, note: 'pending valuation run' },
     ].map(r => `<div class="cx-test-row"><span class="cx-test-icon" style="color:${r.cls}">${r.icon}</span><span class="cx-test-name">${r.name}</span><span class="cx-test-note">${r.note}</span></div>`).join('');
@@ -1612,7 +1556,7 @@ async function reviewAction(action) {
   const res = document.getElementById('review-result'); res.style.display = 'block';
   if (action === 'approve') {
     res.style.background = 'var(--teal-bg)'; res.style.color = 'var(--teal)'; res.style.border = '1px solid var(--teal-border)';
-    res.textContent = 'Approved. Stress assumptions applied to valuation model. Codex patch queued. IC memo finalised.';
+    res.textContent = 'Approved. Stress assumptions applied to valuation model. LLM patch queued. IC memo finalised.';
     const stamp = document.getElementById('vstamp');
     if (stamp) { stamp.textContent = 'APPROVED - HEDGE ACTIVE'; stamp.style.color = 'var(--teal)'; stamp.style.borderColor = 'var(--teal-border)'; }
     try {
@@ -1647,7 +1591,7 @@ async function reviewAction(action) {
   }
 }
 
-// Codex patch generation
+// LLM patch generation
 const PATCH_LINES = [
   '<span style="color:#7dcfff">@dataclass</span>',
   '<span style="color:#ff9e64">class</span> <span style="color:#e0af68">ExportControlScenario</span>:',
@@ -1682,7 +1626,7 @@ async function generatePatch() {
   try {
     const inc = INCIDENTS[ACTIVE];
     if (!inc) { patchRunning = false; btn.disabled = false; btn.innerHTML = '<i class="ti ti-cpu"></i> Generate Patch Proposal'; return; }
-    const data = await fetchJSON('/api/codex_patch', {
+    const data = await fetchJSON('/api/llm_patch', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -1691,10 +1635,10 @@ async function generatePatch() {
         assumptions: { ...ACTIVE_ASSUMPTIONS, china_revenue_exposure: 0.385, compliance_timeline_months: 12 }
       })
     }, 18000);
-    if (!data || !data.scenario_patch) throw new Error('Malformed codex patch response');
+    if (!data || !data.scenario_patch) throw new Error('Malformed LLM patch response');
     const patchJson = document.getElementById('scenario-patch-json');
     if (patchJson) patchJson.textContent = JSON.stringify(data.scenario_patch, null, 2);
-    const code = data.patch_code || data.codex_task || 'Patch proposal queued. No code was generated because OpenAI Codex access is unavailable.';
+    const code = data.patch_code || data.llm_task || 'Patch proposal queued. No code was generated because LLM access is unavailable.';
     content.textContent = code;
     patchRunning = false; btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
@@ -2003,7 +1947,7 @@ renderWatchlist(loadWatchlist());
 updateReviewGate(ACTIVE_ASSUMPTIONS);
 loadCachedScan();
 
-function downloadTask() { alert('In production: codex_task.md downloads as Markdown for direct Codex handoff.'); }
+function downloadTask() { alert('In production: llm_task.md downloads as Markdown for direct LLM handoff.'); }
 function downloadMemo() { alert('In production: IC memo downloads as PDF via Markdown → PDF pipeline.'); }
 </script>
 </body>

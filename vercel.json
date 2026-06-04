@@ -4,7 +4,7 @@
     { "src": "api/tribunal.py",    "use": "@vercel/python", "config": { "maxDuration": 30 } },
     { "src": "api/watchtower.py",  "use": "@vercel/python", "config": { "maxDuration": 30 } },
     { "src": "api/valuation.py",   "use": "@vercel/python", "config": { "maxDuration": 15 } },
-    { "src": "api/codex_patch.py", "use": "@vercel/python", "config": { "maxDuration": 30 } },
+    { "src": "api/llm_patch.py",   "use": "@vercel/python", "config": { "maxDuration": 30 } },
     { "src": "index.html",         "use": "@vercel/static" }
   ],
   "crons": [
@@ -14,7 +14,7 @@
     { "src": "/api/watchtower",  "dest": "api/watchtower.py" },
     { "src": "/api/tribunal",    "dest": "api/tribunal.py" },
     { "src": "/api/valuation",   "dest": "api/valuation.py" },
-    { "src": "/api/codex_patch", "dest": "api/codex_patch.py" },
+    { "src": "/api/llm_patch",    "dest": "api/llm_patch.py" },
     { "src": "/(.*)",            "dest": "index.html" }
   ]
 }

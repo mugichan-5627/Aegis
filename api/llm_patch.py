@@ -39,8 +39,8 @@ def _task_id() -> str:
     return f"AEGIS_PATCH_{datetime.now(timezone.utc).strftime('%Y%m%d')}_001"
 
 
-def _codex_task(ticker: str, trigger_event: str, assumptions: dict) -> str:
-    return f"""# Aegis_Codex Stress Module Patch
+def _llm_task(ticker: str, trigger_event: str, assumptions: dict) -> str:
+    return f"""# Aegis Stress Module Patch
 
 ## Objective
 Add a dedicated export-control stress scenario for {ticker.upper()} triggered by `{trigger_event}`.
@@ -93,7 +93,7 @@ def _scenario_patch(ticker: str, trigger_event: str, assumptions: dict) -> dict:
 
 
 def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> str:
-    """Generate Python patch stub — tries OpenAI Codex first, falls back to Nvidia NIM."""
+    """Generate Python patch stub — tries primary model first, falls back to Nvidia NIM."""
     prompt = (
         "Generate a concise Python dataclass and function stub for a stress scenario module "
         f"for ticker {ticker} triggered by {trigger_event}. "
@@ -103,7 +103,7 @@ def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> 
         f"Use these approved assumptions: {json.dumps(assumptions)}"
     )
 
-    # Try OpenAI Codex first
+    # Try OpenAI first
     openai_key = os.environ.get("OPENAI_API_KEY")
     if openai_key:
         try:
@@ -143,7 +143,7 @@ def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> 
             )
             code = response.choices[0].message.content
             if code and code.strip():
-                return f"# Generated via Nvidia NIM (Codex fallback)\n{code}"
+                return f"# Generated via Nvidia NIM\n{code}"
         except Exception:
             pass
 
@@ -193,7 +193,7 @@ def handle(payload: dict[str, Any]) -> dict:
 
     return {
         "task_id": _task_id(),
-        "codex_task": _codex_task(ticker, trigger_event, assumptions),
+        "llm_task": _llm_task(ticker, trigger_event, assumptions),
         "scenario_patch": _scenario_patch(ticker, trigger_event, assumptions),
         "patch_code": _generate_patch_code(ticker, trigger_event, assumptions),
         "human_approval_required": True,

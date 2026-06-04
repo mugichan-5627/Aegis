@@ -1,8 +1,8 @@
-# Aegis Codex — Doomsday Rapid Agent v2.0
+# Aegis — Doomsday Rapid Agent v2.0
 
 **Autonomous geopolitical & financial risk intelligence platform**
 
-Aegis Codex is an executive-level adversarial threat simulator built for the hackathon. It runs a multi-agent "Fracture Tribunal" that stress-tests company valuations against chaos scenarios — export controls, geopolitical flashpoints, supply chain shocks — and surfaces IC-ready memos with a human review gate before any model changes are applied.
+Aegis is an executive-level adversarial threat simulator built for the hackathon. It runs a multi-agent "Fracture Tribunal" that stress-tests company valuations against chaos scenarios — export controls, geopolitical flashpoints, supply chain shocks — and surfaces IC-ready memos with a human review gate before any model changes are applied.
 
 The system runs autonomously: an hourly cron job scans your watchlist, auto-triggers tribunal debates for critical incidents, and has results waiting when you open the app. The only thing a portfolio manager needs to do is Approve, Soften, or Dismiss.
 
@@ -18,7 +18,7 @@ api/
   watchtower.py     — scans tickers via yfinance + Tavily, computes chaos index
   tribunal.py       — runs adversarial Bear / Bull / Judge LLM debate
   valuation.py      — multi-factor DCF + EV/Revenue distressed valuation
-  codex_patch.py    — generates Python stress module stub via OpenAI
+  llm_patch.py      — generates Python stress module stub via OpenAI
 lib/
   agent_swarm.py    — orchestrates the Fracture Tribunal swarm (Nvidia NIM / OpenAI)
   risk_engine.py    — chaos index, severity classification, keyword scoring
@@ -67,7 +67,7 @@ TAVILY_API_KEY=your_tavily_key
 PHOENIX_API_KEY=your_phoenix_key
 PHOENIX_COLLECTOR_ENDPOINT=https://app.phoenix.arize.com/v1/traces
 
-# Optional — enables AI-generated code stubs in the Codex tab
+# Optional — enables AI-generated code stubs in the LLM tab
 OPENAI_API_KEY=your_openai_key
 ```
 
@@ -106,7 +106,7 @@ vercel deploy --prod
 | Variable | Required | Purpose |
 |---|---|---|
 | `NVIDIA_API_KEY` | Recommended | Powers the Fracture Tribunal LLM debate (Llama 3.3 70B via Nvidia NIM) |
-| `OPENAI_API_KEY` | Optional | Generates Python code stubs in the Codex tab |
+| `OPENAI_API_KEY` | Optional | Generates Python code stubs in the LLM tab |
 | `TAVILY_API_KEY` | Optional | Live news search for risk keyword scoring |
 | `PHOENIX_API_KEY` | Optional | Arize Phoenix cloud telemetry |
 | `PHOENIX_COLLECTOR_ENDPOINT` | Optional | OTLP endpoint for Arize (defaults to Phoenix SaaS) |
@@ -130,7 +130,7 @@ When a user opens the app, incidents are already rendered and a red alert banner
 1. **Watchtower** — view live or cached scan results. Import your portfolio via text input (`AAPL, MSFT`) or upload a CSV file (first column = ticker). Click Scan Watchlist to run a fresh scan.
 2. **Tribunal** — click any incident to load it, then Launch Tribunal. Bear, Bull, and Black Swan Judge agents debate the scenario in real time.
 3. **Verdict** — review the IC memo, valuation waterfall, and scenario matrix. The Human Review Gate pauses the system — Approve, Soften (−15%), or Dismiss.
-4. **Codex** — generate a Python stress module stub for the valuation engine based on the active scenario.
+4. **LLM Patch** — generate a Python stress module stub for the valuation engine based on the active scenario.
 5. **Threat Orbit** — animated radar map showing all watchlist tickers orbiting a threat core, sized by threat score.
 6. **Arize Telemetry** — live OTLP trace explorer showing every span from watchtower scans and tribunal runs.
 
