@@ -530,12 +530,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
           <canvas id="hexCanvas" width="320" height="200"></canvas>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px">
-          <div class="cube-legend"><span class="dot" style="background:#ff3344"></span><span>Semiconductor</span><span class="cube-pct">84%</span></div>
-          <div class="cube-legend"><span class="dot" style="background:#f5a623"></span><span>Geopolitical</span><span class="cube-pct">71%</span></div>
-          <div class="cube-legend"><span class="dot" style="background:#4d9fff"></span><span>Macro / Rates</span><span class="cube-pct">42%</span></div>
-          <div class="cube-legend"><span class="dot" style="background:#40d080"></span><span>Supply Chain</span><span class="cube-pct">28%</span></div>
-          <div class="cube-legend"><span class="dot" style="background:#bf63ff"></span><span>Regulatory</span><span class="cube-pct">61%</span></div>
-          <div class="cube-legend"><span class="dot" style="background:#ff8c42"></span><span>FX / Currency</span><span class="cube-pct">19%</span></div>
+          <div class="cube-legend"><span class="dot" style="background:#ff3344"></span><span>Semiconductor</span><span class="cube-pct" id="semi-pct">0%</span></div>
+          <div class="cube-legend"><span class="dot" style="background:#f5a623"></span><span>Geopolitical</span><span class="cube-pct" id="geo-pct">0%</span></div>
+          <div class="cube-legend"><span class="dot" style="background:#4d9fff"></span><span>Macro / Rates</span><span class="cube-pct" id="macro-pct">0%</span></div>
+          <div class="cube-legend"><span class="dot" style="background:#40d080"></span><span>Supply Chain</span><span class="cube-pct" id="sc-pct">0%</span></div>
+          <div class="cube-legend"><span class="dot" style="background:#bf63ff"></span><span>Regulatory</span><span class="cube-pct" id="reg-pct">0%</span></div>
+          <div class="cube-legend"><span class="dot" style="background:#ff8c42"></span><span>FX / Currency</span><span class="cube-pct" id="fx-pct">0%</span></div>
         </div>
       </div>
       <!-- WATCHLIST TABLE -->
@@ -886,19 +886,80 @@ function initOrbitCanvas() {
 }
 
 // ---- HEXGRID SECTOR EXPOSURE ----
+let LAST_INCIDENTS = [];
+
+function getDynamicSectorExposures() {
+  if (!LAST_INCIDENTS || LAST_INCIDENTS.length === 0) {
+    return { semi: 0, geo: 0, reg: 0, macro: 0, sc: 0, fx: 0 };
+  }
+
+  // 1. Semiconductor: average chaos index of Semiconductor tickers in the incidents
+  const semiIncs = LAST_INCIDENTS.filter(inc => inc.sector === 'Semiconductor');
+  const semi = semiIncs.length ? (semiIncs.reduce((sum, inc) => sum + inc.chaos_index, 0) / semiIncs.length) : 0.05;
+
+  // 2. Geopolitical: average chaos index weighted by keywords in description
+  const geoVal = LAST_INCIDENTS.reduce((acc, x) => acc + ( /geopolitical|taiwan|military|export control|sanction/i.test(x.description) ? x.chaos_index : x.chaos_index * 0.3 ), 0) / LAST_INCIDENTS.length;
+
+  // 3. Regulatory: average chaos index weighted by keywords
+  const regVal = LAST_INCIDENTS.reduce((acc, x) => acc + ( /regulatory|compliance|license|ban|export control/i.test(x.description) ? x.chaos_index : x.chaos_index * 0.2 ), 0) / LAST_INCIDENTS.length;
+
+  // 4. Macro / Rates: average chaos index weighted by keywords or VIX
+  const macroVal = LAST_INCIDENTS.reduce((acc, x) => acc + ( /macro|rate|vix|inflation|yield/i.test(x.description) ? x.chaos_index : x.chaos_index * 0.4 ), 0) / LAST_INCIDENTS.length;
+
+  // 5. Supply Chain: average chaos index weighted by keywords
+  const scVal = LAST_INCIDENTS.reduce((acc, x) => acc + ( /supply chain|production|tool|shipping|shortage/i.test(x.description) ? x.chaos_index : x.chaos_index * 0.25 ), 0) / LAST_INCIDENTS.length;
+
+  // 6. FX / Currency: average chaos index weighted by keywords
+  const fxVal = LAST_INCIDENTS.reduce((acc, x) => acc + ( /fx|currency|dollar|rupee|exchange|global/i.test(x.description) ? x.chaos_index : x.chaos_index * 0.15 ), 0) / LAST_INCIDENTS.length;
+
+  return {
+    semi: Math.min(1, Math.max(0, semi)),
+    geo: Math.min(1, Math.max(0, geoVal)),
+    reg: Math.min(1, Math.max(0, regVal)),
+    macro: Math.min(1, Math.max(0, macroVal)),
+    sc: Math.min(1, Math.max(0, scVal)),
+    fx: Math.min(1, Math.max(0, fxVal))
+  };
+}
+
+function updateSectorExposureLegend(exposures) {
+  const ids = {
+    semi: 'semi-pct',
+    geo: 'geo-pct',
+    reg: 'reg-pct',
+    macro: 'macro-pct',
+    sc: 'sc-pct',
+    fx: 'fx-pct'
+  };
+  for (const [key, id] of Object.entries(ids)) {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = Math.round(exposures[key] * 100) + '%';
+    }
+  }
+}
+
+function rebuildSectorExposures(incidents) {
+  LAST_INCIDENTS = incidents || [];
+  const exposures = getDynamicSectorExposures();
+  updateSectorExposureLegend(exposures);
+}
+
 function initHexCanvas() {
   const canvas = document.getElementById('hexCanvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const W = 320, H = 200;
 
+  const exposures = getDynamicSectorExposures();
+
   const SECTORS = [
-    { label:'SEMI',  sub:'Semiconductor', fill:0.84, color:'#ff3344' },
-    { label:'GEO',   sub:'Geopolitical',  fill:0.71, color:'#f5a623' },
-    { label:'REG',   sub:'Regulatory',    fill:0.61, color:'#bf63ff' },
-    { label:'MACRO', sub:'Macro/Rates',   fill:0.42, color:'#4d9fff' },
-    { label:'SC',    sub:'Supply Chain',  fill:0.28, color:'#40d080' },
-    { label:'FX',    sub:'FX/Currency',   fill:0.19, color:'#ff8c42' },
+    { label:'SEMI',  sub:'Semiconductor', fill:exposures.semi, color:'#ff3344' },
+    { label:'GEO',   sub:'Geopolitical',  fill:exposures.geo, color:'#f5a623' },
+    { label:'REG',   sub:'Regulatory',    fill:exposures.reg, color:'#bf63ff' },
+    { label:'MACRO', sub:'Macro/Rates',   fill:exposures.macro, color:'#4d9fff' },
+    { label:'SC',    sub:'Supply Chain',  fill:exposures.sc, color:'#40d080' },
+    { label:'FX',    sub:'FX/Currency',   fill:exposures.fx, color:'#ff8c42' },
   ];
 
   // Hexagon geometry — flat-top, 2 rows of 3
@@ -933,8 +994,18 @@ function initHexCanvas() {
     ctx.clearRect(0, 0, W, H);
     frame++;
 
+    const curExposures = getDynamicSectorExposures();
+    const fillKeys = ['semi', 'geo', 'reg', 'macro', 'sc', 'fx'];
+
     SECTORS.forEach((s, i) => {
-      if (progress[i] < s.fill) progress[i] = Math.min(progress[i] + 0.008, s.fill);
+      s.fill = curExposures[fillKeys[i]];
+
+      if (progress[i] < s.fill) {
+        progress[i] = Math.min(progress[i] + 0.008, s.fill);
+      } else if (progress[i] > s.fill) {
+        progress[i] = Math.max(progress[i] - 0.008, s.fill);
+      }
+
       const { x, y } = centers[i];
       const p = progress[i];
       const pulse = Math.sin(frame * 0.04 + i * 1.1) * 0.03;
@@ -1154,6 +1225,7 @@ function renderIncidents(incidents) {
   if (summary) summary.innerHTML = `<span class="tag tag-r">${critical} critical</span><span class="tag tag-a">${elevated} elevated</span>`;
   renderWatchlist(loadWatchlist(), incidents);
   rebuildOrbitTickers(incidents);
+  rebuildSectorExposures(incidents);
 }
 
 function updateAgentLog(incidents) {
