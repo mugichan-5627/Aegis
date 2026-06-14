@@ -1430,7 +1430,7 @@ async function launchTribunal() {
         chaos_index: parseFloat(inc.chaos),
         severity: inc.sev
       })
-    }, 28000);
+    }, 29000);
     if (!data || !Array.isArray(data.rounds)) throw new Error('Malformed tribunal response');
     DEBATES[ACTIVE] = data.rounds;
     msgs = data.rounds;

@@ -20,7 +20,10 @@ NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 # Fast model keeps the tribunal reliably inside the serverless budget while
 # Tavily grounding (below) supplies the company-specific richness.
 NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"
-LLM_TIMEOUT_SECONDS = 20.0
+# Generous headroom so a slow-but-valid NIM response still lands instead of
+# dropping to the generic fallback. Stays under the 30s function budget once
+# Tavily (~2-3s) and overhead are added; the frontend waits 29s.
+LLM_TIMEOUT_SECONDS = 24.0
 
 DEFAULT_ASSUMPTIONS = {
     "revenue_haircut_pct": 28.5,
@@ -164,19 +167,20 @@ def _news_context(ticker: str, incident: str) -> str:
             f"{ticker} stock news risk earnings guidance regulation competition "
             f"{incident}"
         )[:380]
-        result = client.search(query=query, max_results=6, search_depth="basic")
+        result = client.search(query=query, max_results=5, search_depth="basic")
         items = result.get("results") if isinstance(result, dict) else None
         if not items:
             return ""
         lines = []
-        for it in items[:6]:
+        for it in items[:5]:
             if not isinstance(it, dict):
                 continue
             title = str(it.get("title") or "").strip()
             body = str(it.get("content") or it.get("snippet") or "").strip()
             if title or body:
-                lines.append(f"- {title}: {body[:240]}")
-        return "\n".join(lines)
+                lines.append(f"- {title}: {body[:170]}")
+        # Keep the grounding compact so generation stays fast and reliable.
+        return "\n".join(lines)[:1400]
     except Exception:
         return ""
 

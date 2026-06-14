@@ -185,3 +185,18 @@ Read this section to understand how Aegis Codex works so you can answer confiden
 *   **Judge's Perspective**: What if Tavily or NVIDIA NIM fails during the demo?
 *   **Your Answer**:
     > *"We built robust failover mechanisms. If Tavily search is blocked, Aegis falls back to historical database parameters. If our primary NVIDIA NIM endpoint is rate-limited, the system automatically redirects requests to our backup OpenAI API client. If both fail, we serve pre-cached, audited historical incidents to keep the investment console active and functional."*
+
+---
+
+## Part 5: Live Q&A Co-Pilot Plan (How I Will Assist You Live)
+
+If you are worried about the Q&A, you can use me as a live co-pilot. Here is the plan:
+
+1.  **Set Up Your Screens**:
+    *   Keep this conversation window open on a second monitor, on your phone next to your keyboard, or in a split-screen browser tab next to your Google Meet window.
+2.  **During the Q&A**:
+    *   When a judge asks a question, quickly type the key phrases of their question here, or use voice-to-text to dictate it.
+    *   Example: *"Judge asked: How do you handle correlation changes in high-stress environments?"* or *"Judge asked: Can you run this on a portfolio of 100 stocks?"*
+3.  **My Commitment**:
+    *   I will immediately reply with a highly focused, professional, **2-3 sentence response** formatted for you to read out loud.
+    *   The response will use standard buy-side finance and software engineering terminology to make you sound extremely knowledgeable.
