@@ -81,7 +81,48 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict:
     return json.loads(raw or "{}")
 
 
+import urllib.request
+
+# yfinance's default requests get rate-limited / blocked on Vercel serverless,
+# which silently returns empty history (every drawdown shows 0.0%). Hitting
+# Yahoo's public chart endpoint with a browser User-Agent is far more reliable
+# there and needs no auth crumb. yfinance stays as a local fallback.
+_YF_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
+
+
+def _yahoo_series(ticker: str, rng: str = "5d", interval: str = "1d") -> dict | None:
+    for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+        try:
+            url = (
+                f"https://{host}/v8/finance/chart/{ticker}"
+                f"?range={rng}&interval={interval}"
+            )
+            req = urllib.request.Request(url, headers={"User-Agent": _YF_UA})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            results = (data.get("chart") or {}).get("result") or []
+            if results:
+                return results[0]
+        except Exception:
+            continue
+    return None
+
+
 def _vix() -> float:
+    series = _yahoo_series("^VIX", "5d", "1d")
+    if series:
+        try:
+            closes = [c for c in series["indicators"]["quote"][0].get("close", []) if c is not None]
+            if closes:
+                return round(float(closes[-1]), 1)
+            price = (series.get("meta") or {}).get("regularMarketPrice")
+            if price:
+                return round(float(price), 1)
+        except Exception:
+            pass
     try:
         hist = yf.Ticker("^VIX").history(period="1d")
         close = hist["Close"].dropna()
@@ -93,14 +134,26 @@ def _vix() -> float:
 
 
 def _drawdown(ticker: str) -> float:
-    hist = yf.Ticker(ticker).history(period="5d")
-    if hist is None or hist.empty:
-        return 0.0
-    open_5d = float(hist["Open"].dropna().iloc[0])
-    latest_close = float(hist["Close"].dropna().iloc[-1])
-    if open_5d == 0:
-        return 0.0
-    return round((latest_close - open_5d) / open_5d * 100, 1)
+    series = _yahoo_series(ticker, "5d", "1d")
+    if series:
+        try:
+            quote = series["indicators"]["quote"][0]
+            opens = [o for o in quote.get("open", []) if o is not None]
+            closes = [c for c in quote.get("close", []) if c is not None]
+            if opens and closes and opens[0]:
+                return round((closes[-1] - opens[0]) / opens[0] * 100, 1)
+        except Exception:
+            pass
+    try:
+        hist = yf.Ticker(ticker).history(period="5d")
+        if hist is not None and not hist.empty:
+            open_5d = float(hist["Open"].dropna().iloc[0])
+            latest_close = float(hist["Close"].dropna().iloc[-1])
+            if open_5d:
+                return round((latest_close - open_5d) / open_5d * 100, 1)
+    except Exception:
+        pass
+    return 0.0
 
 
 def _tavily_hits(ticker: str) -> int:
