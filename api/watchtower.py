@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib.portfolio_manager import get_sector, validate_watchlist
+from lib.portfolio_manager import get_sector, resolve_ticker, validate_watchlist
 from lib.risk_engine import (
     compute_chaos_index,
     classify_severity,
@@ -175,11 +175,14 @@ def _tavily_hits(ticker: str) -> int:
         return fallback_keyword_hits(ticker)
 
 
-def scan_ticker(ticker: str, vix: float) -> dict:
+def scan_ticker(ticker: str, vix: float, sector_hint: str | None = None) -> dict:
     drawdown_pct = _drawdown(ticker)
     keyword_hits = _tavily_hits(ticker)
     chaos = compute_chaos_index(drawdown_pct, vix, keyword_hits)
-    sector = sector_label(ticker, get_sector(ticker))
+    if sector_hint and sector_hint != "Unknown":
+        sector = sector_hint
+    else:
+        sector = sector_label(ticker, get_sector(ticker))
     return {
         "ticker": ticker,
         "description": incident_description(ticker, sector, drawdown_pct, keyword_hits),
@@ -206,11 +209,20 @@ def handle(payload: dict[str, Any]) -> dict:
     trace_id = trace["trace_id"]
     
     incidents = []
-    for ticker in tickers:
+    for raw_ticker in tickers:
+        # Resolve to the canonical Yahoo symbol (adds .NS/.BO for Indian names)
+        # and grab its sector in the same lookup.
+        try:
+            resolved = resolve_ticker(raw_ticker)
+            ticker = resolved.get("symbol") or raw_ticker
+            sector_hint = resolved.get("sector")
+        except Exception:
+            ticker = raw_ticker
+            sector_hint = None
         # Start a span for each ticker
         span = arize_client.start_span(trace_id=trace_id, name=f"Scan Ticker: {ticker}")
         try:
-            inc = scan_ticker(ticker, vix)
+            inc = scan_ticker(ticker, vix, sector_hint)
             incidents.append(inc)
             arize_client.complete_span(
                 trace_id=trace_id,
