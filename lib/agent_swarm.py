@@ -17,8 +17,10 @@ from lib.local_telemetry import GLOBAL_TRACE_CONSOLE, arize_client
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
-LLM_TIMEOUT_SECONDS = 15.0
+# Fast model keeps the tribunal reliably inside the serverless budget while
+# Tavily grounding (below) supplies the company-specific richness.
+NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"
+LLM_TIMEOUT_SECONDS = 20.0
 
 DEFAULT_ASSUMPTIONS = {
     "revenue_haircut_pct": 28.5,
@@ -146,6 +148,39 @@ def _fallback(ticker: str) -> dict:
     }
 
 
+def _news_context(ticker: str, incident: str) -> str:
+    """Pull recent, real headlines via Tavily so the tribunal can argue from
+    company-specific facts (segments, customers, geographies, figures) instead
+    of generic boilerplate. Returns a formatted bullet list, or "" if Tavily is
+    unavailable."""
+    key = os.environ.get("TAVILY_API_KEY")
+    if not key:
+        return ""
+    try:
+        from tavily import TavilyClient
+
+        client = TavilyClient(api_key=key)
+        query = (
+            f"{ticker} stock news risk earnings guidance regulation competition "
+            f"{incident}"
+        )[:380]
+        result = client.search(query=query, max_results=6, search_depth="basic")
+        items = result.get("results") if isinstance(result, dict) else None
+        if not items:
+            return ""
+        lines = []
+        for it in items[:6]:
+            if not isinstance(it, dict):
+                continue
+            title = str(it.get("title") or "").strip()
+            body = str(it.get("content") or it.get("snippet") or "").strip()
+            if title or body:
+                lines.append(f"- {title}: {body[:240]}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _client_and_model() -> tuple[OpenAI | None, str | None]:
     openai_key = os.environ.get("OPENAI_API_KEY", None)
     if openai_key:
@@ -262,29 +297,54 @@ def run_tribunal(
         fallback_res["telemetry"] = matching_trace
         return fallback_res
 
-    prompt = f"""
-Return only valid JSON matching this schema:
+    # Ground the debate in real, current headlines (logged as its own span).
+    news_span = arize_client.start_span(trace_id=trace_id, name="Tavily News Retrieval")
+    news = _news_context(ticker, incident)
+    arize_client.complete_span(
+        trace_id=trace_id,
+        span_id=news_span["span_id"],
+        inputs={"ticker": ticker, "incident": incident},
+        outputs={"headlines": news[:1000] if news else "(none — Tavily unavailable)"},
+        status="SUCCESS" if news else "SKIPPED",
+    )
+    news_block = (
+        "\nLIVE NEWS CONTEXT (cite specific facts, figures, products, customers, "
+        "geographies and events from these — do NOT write generic statements that "
+        f"could apply to any company):\n{news}\n"
+        if news
+        else ""
+    )
+
+    prompt = f"""You are running an adversarial investment tribunal on {ticker}.
+{news_block}
+Incident under review: {incident}
+Chaos index: {chaos_index} (0-1 scale). Severity: {severity}.
+
+Write three rounds of argument that are SPECIFIC to {ticker}. Reference the
+company's actual business segments, flagship products, major customers,
+competitors, and geographic revenue mix. Where the news context gives concrete
+facts or numbers, use them. Avoid boilerplate that could describe any company.
+
+Return ONLY valid JSON (no markdown) matching this schema:
 {{
   "rounds": [
-    {{"role":"bear","label":"Bear Analyst","text":"3-5 sentences","score":7.8}},
-    {{"role":"bull","label":"Bull Analyst","text":"3-5 sentences","score":6.4}},
-    {{"role":"judge","label":"Black Swan Judge","text":"3-5 sentences","score":9.1}}
+    {{"role":"bear","label":"Bear Analyst","text":"4-5 sentences: specific downside thesis with concrete, named drivers","score":7.8}},
+    {{"role":"bull","label":"Bull Analyst","text":"4-5 sentences: specific rebuttal naming real offsetting strengths","score":6.4}},
+    {{"role":"judge","label":"Black Swan Judge","text":"4-5 sentences synthesis ending with 'RECOMMENDATION - HEDGE/HOLD/REDUCE ...'","score":9.1}}
   ],
   "proposed_assumptions": {{
-    "revenue_haircut_pct": 28.5,
-    "margin_compression_bps": 420,
-    "wacc_premium_bps": 380,
-    "terminal_growth_delta": -1.4
+    "revenue_haircut_pct": <number 0-60>,
+    "margin_compression_bps": <integer 0-800>,
+    "wacc_premium_bps": <integer 0-700>,
+    "terminal_growth_delta": <negative number, e.g. -0.5 to -3.0>
   }}
 }}
 
-Ticker: {ticker}
-Incident: {incident}
-Chaos index: {chaos_index}
-Severity: {severity}
-
-Run exactly three rounds: Bear prosecution, Bull defense, and Black Swan Judge synthesis.
-Keep each text under five sentences and make the assumptions numeric.
+Scores are 0-10 conviction levels. CHOOSE proposed_assumptions values that are
+justified by THIS company's specific risk, the incident, the severity
+({severity}) and the chaos index ({chaos_index}) — do NOT copy the placeholder
+ranges, and do not reuse round numbers like 28.5 / 420 / 380 unless they
+genuinely fit. A higher chaos index means a deeper haircut and wider premium.
 """
 
     # Start a span for the LLM Swarm call
@@ -296,7 +356,7 @@ Keep each text under five sentences and make the assumptions numeric.
             messages=[
                 {
                     "role": "system",
-                    "content": "You are Aegis_Codex, an institutional crisis valuation tribunal. Return strict JSON only.",
+                    "content": "You are Aegis_Codex, an institutional crisis-valuation tribunal. You ground every argument in the specific company's fundamentals and the live news provided, never generic boilerplate. Return strict JSON only, no markdown.",
                 },
                 {"role": "user", "content": prompt},
             ],

@@ -102,6 +102,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 .rfield:last-child{border:none}
 .rfield-k{color:rgba(255,100,100,0.75)}
 .rfield-v{color:var(--text);font-weight:500}
+.rgate-ibtn{cursor:pointer;border:1px solid var(--red-border);background:transparent;color:rgba(255,100,100,0.75);border-radius:50%;width:15px;height:15px;font-size:9px;font-weight:700;line-height:1;display:inline-flex;align-items:center;justify-content:center;margin-left:7px;vertical-align:middle;font-style:italic;font-family:Georgia,serif}
+.rgate-ibtn:hover{color:#fff;border-color:var(--red)}
+.rgate-formula{margin-top:11px;padding:11px 13px;background:rgba(0,0,0,0.22);border:1px solid var(--red-border);border-radius:var(--radius);font-size:10.5px;line-height:1.65;color:var(--muted)}
+.rgate-formula div{padding:3px 0}
+.rgate-formula b{color:rgba(255,150,150,0.92);font-weight:600}
+.rgate-formula code{color:var(--teal);font-family:var(--mono);font-size:10px}
 .rgate-btns{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 /* ---- VERDICT STAMP ---- */
 .vstamp{font-family:var(--display);font-size:17px;font-weight:700;color:var(--red);border:1.5px solid var(--red-border);border-radius:var(--radius);padding:7px 16px;display:inline-block;letter-spacing:4px;text-transform:uppercase;margin-bottom:14px}
@@ -742,6 +748,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
 let TICKERS = [];
 
 const THREAT_COLORS = { critical:'#ff3344', elevated:'#f5a623', watch:'#4d9fff', monitor:'#40d080' };
+// Distinct per-ticker palette so each node on the orbit map reads as its own
+// body (severity is still encoded via node size and the % label).
+const ORBIT_PALETTE = ['#4d9fff','#ff6ec7','#40d080','#f5a623','#bf63ff','#00e5cc','#ff3344','#ffd23f','#5a9bff','#ff8c42'];
 
 function severityType(sev) {
   if (sev === 'critical') return 'critical';
@@ -758,6 +767,7 @@ function rebuildOrbitTickers(incidents) {
     threat: Math.min(1, Math.max(0, Number(inc.chaos_index || 0))),
     sector: inc.sector || 'Unknown',
     type:   severityType(inc.severity),
+    color:  ORBIT_PALETTE[i % ORBIT_PALETTE.length],
     price:  '—',
     chg:    `${Number(inc.drawdown_pct || 0).toFixed(1)}%`,
     orbit:  orbitRadii[i % orbitRadii.length],
@@ -832,6 +842,7 @@ function initOrbitCanvas() {
       t.angle += t.speed;
       const x = cx + Math.cos(t.angle) * t.orbit;
       const y = cy + Math.sin(t.angle) * t.orbit;
+      const col = t.color || THREAT_COLORS[t.type];
 
       // trail
       trails[i].push({ x, y, a: 0.55 });
@@ -839,30 +850,30 @@ function initOrbitCanvas() {
       trails[i].forEach((pt, j) => {
         const a = (j / trails[i].length) * pt.a;
         ctx.beginPath(); ctx.arc(pt.x, pt.y, 2.5, 0, Math.PI * 2);
-        ctx.fillStyle = `${THREAT_COLORS[t.type]}${Math.floor(a * 255).toString(16).padStart(2,'0')}`;
+        ctx.fillStyle = `${col}${Math.floor(a * 255).toString(16).padStart(2,'0')}`;
         ctx.fill();
       });
 
       // orbit ring
       ctx.beginPath(); ctx.setLineDash([3,6]);
       ctx.arc(cx, cy, t.orbit, 0, Math.PI * 2);
-      ctx.strokeStyle = `${THREAT_COLORS[t.type]}22`; ctx.lineWidth = 1; ctx.stroke();
+      ctx.strokeStyle = `${col}22`; ctx.lineWidth = 1; ctx.stroke();
       ctx.setLineDash([]);
 
       // node — radius proportional to threat score
       const nr = 9 + t.threat * 18; // threat 0.19 → ~12px, 0.92 → ~26px
       const gn = ctx.createRadialGradient(x, y, 0, x, y, nr);
-      gn.addColorStop(0, THREAT_COLORS[t.type] + 'cc');
-      gn.addColorStop(1, THREAT_COLORS[t.type] + '11');
+      gn.addColorStop(0, col + 'cc');
+      gn.addColorStop(1, col + '11');
       ctx.beginPath(); ctx.arc(x, y, nr, 0, Math.PI * 2);
       ctx.fillStyle = gn; ctx.fill();
-      ctx.strokeStyle = THREAT_COLORS[t.type]; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke();
 
       // pulse ring for critical
       if (t.type === 'critical') {
         const pulse = Math.sin(Date.now() / 500 + i) * 6 + nr + 4;
         ctx.beginPath(); ctx.arc(x, y, pulse, 0, Math.PI * 2);
-        ctx.strokeStyle = THREAT_COLORS[t.type] + '44'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.strokeStyle = col + '44'; ctx.lineWidth = 1; ctx.stroke();
       }
 
       // label
@@ -870,14 +881,14 @@ function initOrbitCanvas() {
       ctx.textAlign = 'center';
       ctx.fillText(t.sym, x, y + 3.5);
       ctx.font = '7.5px JetBrains Mono';
-      ctx.fillStyle = THREAT_COLORS[t.type];
+      ctx.fillStyle = col;
       ctx.fillText(Math.round(t.threat * 100) + '%', x, y + 14);
       ctx.textAlign = 'left';
 
       // threat vector line to center (for critical)
       if (t.type === 'critical') {
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(cx, cy);
-        ctx.strokeStyle = THREAT_COLORS[t.type] + '18'; ctx.lineWidth = 0.8; ctx.stroke();
+        ctx.strokeStyle = col + '18'; ctx.lineWidth = 0.8; ctx.stroke();
       }
     });
     requestAnimationFrame(drawOrbit);
@@ -1070,7 +1081,7 @@ function buildOrbitTable() {
   if (!el) return;
   el.innerHTML = TICKERS.map(t => `
     <div class="orbit-row" onclick="loadAndGo('${t.sym.toLowerCase().split('.')[0]}')">
-      <div class="orbit-badge" style="background:${THREAT_COLORS[t.type]}"></div>
+      <div class="orbit-badge" style="background:${t.color || THREAT_COLORS[t.type]}"></div>
       <div style="flex:1">
         <div style="font-weight:500;color:var(--text)">${t.sym}</div>
         <div style="font-size:10px;color:var(--muted)">${t.sector}</div>
@@ -1419,7 +1430,7 @@ async function launchTribunal() {
         chaos_index: parseFloat(inc.chaos),
         severity: inc.sev
       })
-    }, 18000);
+    }, 28000);
     if (!data || !Array.isArray(data.rounds)) throw new Error('Malformed tribunal response');
     DEBATES[ACTIVE] = data.rounds;
     msgs = data.rounds;
@@ -1577,6 +1588,11 @@ function updateLlmFromIncident(inc) {
   }
 }
 
+function toggleAssumptionInfo() {
+  const p = document.getElementById('rgate-formula');
+  if (p) p.style.display = (p.style.display === 'none' || !p.style.display) ? 'block' : 'none';
+}
+
 function updateReviewGate(assumptions) {
   const el = document.getElementById('review-assumptions');
   if (!el || !assumptions) return;
@@ -1585,12 +1601,20 @@ function updateReviewGate(assumptions) {
   const wacc = Number(assumptions.wacc_premium_bps || 0);
   const tg = Number(assumptions.terminal_growth_delta || 0);
   el.innerHTML = `
-    <div class="rgate-title"><i class="ti ti-settings" style="font-size:10px"></i> Proposed Stress Assumptions</div>
+    <div class="rgate-title"><i class="ti ti-settings" style="font-size:10px"></i> Proposed Stress Assumptions<span class="rgate-ibtn" onclick="toggleAssumptionInfo()" title="How these inputs flow into the valuation model">i</span></div>
     <div class="rfield"><span class="rfield-k">Revenue haircut</span><span class="rfield-v">-${rev.toFixed(1)}% stressed revenue</span></div>
     <div class="rfield"><span class="rfield-k">Margin compression</span><span class="rfield-v">-${Math.round(margin)} bps EBITDA</span></div>
     <div class="rfield"><span class="rfield-k">WACC premium</span><span class="rfield-v">+${Math.round(wacc)} bps regulatory risk</span></div>
     <div class="rfield"><span class="rfield-k">Terminal growth</span><span class="rfield-v">${tg.toFixed(1)} pts</span></div>
     <div class="rfield"><span class="rfield-k">Human review</span><span class="rfield-v" style="font-size:14px;color:var(--red)">required</span></div>
+    <div class="rgate-formula" id="rgate-formula" style="display:none">
+      <div style="color:rgba(255,150,150,0.92);font-weight:600;letter-spacing:1px;margin-bottom:4px">HOW THESE FLOW INTO THE VALUATION</div>
+      <div><b>Revenue haircut</b> — stressed revenue <code>= base_revenue × (1 − haircut%)</code>. The share of revenue the tribunal judges could be repriced under this scenario.</div>
+      <div><b>Margin compression</b> — EBITDA margin reduced by the stated basis points <code>(1 bp = 0.01%)</code>, modelling cost deleverage and lost pricing power.</div>
+      <div><b>WACC premium</b> — added to the discount rate <code>(bps ÷ 10,000)</code>; a higher cost of capital lowers the present value of future cash flows.</div>
+      <div><b>Terminal growth</b> — perpetual growth rate shifted by the stated points, reducing terminal value in the DCF.</div>
+      <div style="margin-top:5px;color:rgba(255,255,255,0.45)">Values are set by the Bear/Bull/Judge tribunal from the live incident, chaos index and Tavily news — they are proposals for human review, not executed changes.</div>
+    </div>
   `;
   // Unlock review buttons now that tribunal has produced assumptions
   ['approve-btn','soften-btn','dismiss-btn'].forEach(id => {
