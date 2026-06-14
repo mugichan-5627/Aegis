@@ -115,7 +115,7 @@ FALLBACK_DEBATES = {
 }
 
 
-def _fallback(ticker: str) -> dict:
+def _fallback(ticker: str, incident: str = "", severity: str = "") -> dict:
     normalized_ticker = (ticker or "NVDA").upper()
     data = FALLBACK_DEBATES.get(normalized_ticker)
     if data:
@@ -123,23 +123,27 @@ def _fallback(ticker: str) -> dict:
         assumptions = dict(data["proposed_assumptions"])
     else:
         assumptions = dict(DEFAULT_ASSUMPTIONS)
+        # Weave the live incident in so even the no-LLM path references the real
+        # company, sector and price move rather than pure boilerplate.
+        ctx = f" Trigger: {incident.strip()}" if incident else ""
+        sev = (severity or "stress").lower()
         rounds = [
             {
                 "role": "bear",
                 "label": "Bear Analyst",
-                "text": f"{normalized_ticker} faces a material stress event because the incident combines price pressure, risk-keyword density, and sector exposure. The downside case assumes investors reprice near-term revenue quality before management can prove mitigation. A defensive model should apply a revenue haircut, EBITDA margin compression, and a higher risk premium until the signal cools.",
+                "text": f"{normalized_ticker} is flagged as a {sev}-level case.{ctx} The bear view treats this as a genuine repricing risk: investors discount near-term revenue quality before management can prove mitigation. Apply a revenue haircut, EBITDA margin compression and a higher risk premium until the signal cools.",
                 "score": 7.4,
             },
             {
                 "role": "bull",
                 "label": "Bull Analyst",
-                "text": f"{normalized_ticker} still has offsetting strengths that may limit permanent value impairment. Large-cap franchises often absorb macro shocks through pricing power, balance-sheet flexibility, and demand rotation across customer segments. The incident deserves monitoring, but the full Bear case should not be treated as inevitable without confirming evidence.",
+                "text": f"{normalized_ticker} retains offsetting strengths that can limit permanent impairment — pricing power, balance-sheet flexibility and demand rotation across its segments. The flagged move may overstate durable damage versus a transient dislocation. The case warrants monitoring, but the full bear scenario should not be treated as inevitable without confirming evidence.",
                 "score": 6.3,
             },
             {
                 "role": "judge",
                 "label": "Black Swan Judge",
-                "text": f"The tribunal assigns {normalized_ticker} a balanced but cautious stress verdict. The Bear case wins on timing risk, while the Bull case matters for medium-term recovery. RECOMMENDATION - HEDGE or reduce exposure modestly until live indicators improve, then re-run valuation with the approved stress assumptions.",
+                "text": f"The tribunal assigns {normalized_ticker} a balanced but cautious {sev} verdict. The bear case wins on timing risk while the bull case matters for medium-term recovery. RECOMMENDATION - HEDGE or reduce exposure modestly until live indicators improve, then re-run valuation with the approved stress assumptions.",
                 "score": 8.4,
             },
         ]
@@ -276,7 +280,7 @@ def run_tribunal(
     
     client, model = _client_and_model()
     if not client or not model:
-        fallback_res = _fallback(ticker)
+        fallback_res = _fallback(ticker, incident, severity)
         # Log spans for fallback execution
         for round_idx, r in enumerate(fallback_res["rounds"]):
             span_name = f"Swarm Segment: {r['label']}"
@@ -355,7 +359,7 @@ genuinely fit. A higher chaos index means a deeper haircut and wider premium.
     llm_span = arize_client.start_span(trace_id=trace_id, name=f"LLM Swarm Synthesis ({model})")
 
     try:
-        response = client.chat.completions.create(
+        create_kwargs = dict(
             model=model,
             messages=[
                 {
@@ -368,6 +372,15 @@ genuinely fit. A higher chaos index means a deeper haircut and wider premium.
             max_tokens=900,
             timeout=LLM_TIMEOUT_SECONDS,
         )
+        try:
+            # JSON mode forces parseable output — the 8B model otherwise returns
+            # slightly-off JSON intermittently, which dropped us to the generic
+            # fallback. Retry without it if a model/endpoint rejects the param.
+            response = client.chat.completions.create(
+                response_format={"type": "json_object"}, **create_kwargs
+            )
+        except Exception:
+            response = client.chat.completions.create(**create_kwargs)
         text = response.choices[0].message.content or ""
         parsed = _extract_json(text)
         if not parsed:
@@ -381,7 +394,7 @@ genuinely fit. A higher chaos index means a deeper haircut and wider premium.
             )
             arize_client.complete_trace(trace_id=trace_id)
             
-            fallback_res = _fallback(ticker)
+            fallback_res = _fallback(ticker, incident, severity)
             matching_trace = None
             for t in GLOBAL_TRACE_CONSOLE:
                 if t["trace_id"] == trace_id:
@@ -455,7 +468,7 @@ genuinely fit. A higher chaos index means a deeper haircut and wider premium.
         )
         arize_client.complete_trace(trace_id=trace_id)
         
-        fallback_res = _fallback(ticker)
+        fallback_res = _fallback(ticker, incident, severity)
         matching_trace = None
         for t in GLOBAL_TRACE_CONSOLE:
             if t["trace_id"] == trace_id:
