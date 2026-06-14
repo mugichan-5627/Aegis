@@ -135,7 +135,15 @@ def revenue_at_risk(ticker: str) -> int:
 
 
 def sector_label(ticker: str, yfinance_sector: str = "Unknown") -> str:
-    return SECTOR_OVERRIDES.get(ticker.upper(), yfinance_sector or "Unknown")
+    """Prefer the live yfinance classification (works for US + Indian equities).
+
+    The static SECTOR_MAP is only a fallback for when yfinance returns nothing
+    (offline, rate-limited, or an unrecognised symbol), so real listings always
+    get their accurate industry label rather than a coarse hardcoded override.
+    """
+    if yfinance_sector and yfinance_sector != "Unknown":
+        return yfinance_sector
+    return SECTOR_OVERRIDES.get(ticker.upper(), "Unknown")
 
 
 def incident_description(ticker: str, sector: str, drawdown_pct: float, keyword_hits: int) -> str:

@@ -92,6 +92,21 @@ def _scenario_patch(ticker: str, trigger_event: str, assumptions: dict) -> dict:
     }
 
 
+def _strip_code_fences(code: str) -> str:
+    """Remove leading/trailing markdown code fences (```python ... ```) that LLMs
+    add despite instructions, so the preview shows clean Python only."""
+    text = (code or "").strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        # drop the opening fence (``` or ```python)
+        lines = lines[1:]
+        # drop the closing fence if present
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
+
 def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> str:
     """Generate Python patch stub — tries primary model first, falls back to Nvidia NIM."""
     prompt = (
@@ -108,18 +123,18 @@ def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> 
     if openai_key:
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=openai_key)
+            client = OpenAI(api_key=openai_key, timeout=20.0, max_retries=0)
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are a Python code generator. Return only valid Python code, no markdown fences."},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=600,
+                max_tokens=380,
             )
             code = response.choices[0].message.content
             if code and code.strip():
-                return code
+                return _strip_code_fences(code)
         except Exception:
             pass
 
@@ -131,19 +146,24 @@ def _generate_patch_code(ticker: str, trigger_event: str, assumptions: dict) -> 
             client = OpenAI(
                 api_key=nvidia_key,
                 base_url="https://integrate.api.nvidia.com/v1",
+                timeout=18.0,
+                max_retries=0,
             )
+            # Use the fast 8B model for interactive patch generation: it returns real
+            # LLM output in ~5-8s, reliably inside the serverless budget. (The 70B model
+            # powers the Tribunal debate, where latency is less critical.)
             response = client.chat.completions.create(
-                model="meta/llama-3.3-70b-instruct",
+                model="meta/llama-3.1-8b-instruct",
                 messages=[
                     {"role": "system", "content": "You are a Python code generator. Return only valid Python code, no markdown fences."},
                     {"role": "user", "content": prompt},
                 ],
-                max_tokens=600,
+                max_tokens=380,
                 temperature=0.2,
             )
             code = response.choices[0].message.content
             if code and code.strip():
-                return f"# Generated via Nvidia NIM\n{code}"
+                return f"# Generated via Nvidia NIM\n{_strip_code_fences(code)}"
         except Exception:
             pass
 

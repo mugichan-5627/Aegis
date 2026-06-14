@@ -18,7 +18,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODEL = "meta/llama-3.3-70b-instruct"
-LLM_TIMEOUT_SECONDS = 10.0
+LLM_TIMEOUT_SECONDS = 15.0
 
 DEFAULT_ASSUMPTIONS = {
     "revenue_haircut_pct": 28.5,

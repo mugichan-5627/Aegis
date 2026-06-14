@@ -894,7 +894,7 @@ function getDynamicSectorExposures() {
   }
 
   // 1. Semiconductor: average chaos index of Semiconductor tickers in the incidents
-  const semiIncs = LAST_INCIDENTS.filter(inc => inc.sector === 'Semiconductor');
+  const semiIncs = LAST_INCIDENTS.filter(inc => inc.sector && /semiconductor/i.test(inc.sector));
   const semi = semiIncs.length ? (semiIncs.reduce((sum, inc) => sum + inc.chaos_index, 0) / semiIncs.length) : 0.05;
 
   // 2. Geopolitical: average chaos index weighted by keywords in description
@@ -1706,7 +1706,7 @@ async function generatePatch() {
         trigger_event: 'EAR_99_CHINA_GPU_EXPANSION',
         assumptions: { ...ACTIVE_ASSUMPTIONS, china_revenue_exposure: 0.385, compliance_timeline_months: 12 }
       })
-    }, 18000);
+    }, 28000);
     if (!data || !data.scenario_patch) throw new Error('Malformed LLM patch response');
     const patchJson = document.getElementById('scenario-patch-json');
     if (patchJson) patchJson.textContent = JSON.stringify(data.scenario_patch, null, 2);

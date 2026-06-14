@@ -31,7 +31,20 @@ from lib.local_telemetry import GLOBAL_TRACE_CONSOLE, arize_client
 
 load_dotenv(ROOT / ".env")
 
-CACHE_FILE = Path("/tmp/aegis_last_scan.json")
+def _get_cache_path(filename: str) -> Path:
+    p = Path(f"/tmp/{filename}")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        test_file = p.parent / ".write_test"
+        test_file.write_text("test")
+        test_file.unlink()
+        return p
+    except Exception:
+        fallback = ROOT / "tmp" / filename
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+CACHE_FILE = _get_cache_path("aegis_last_scan.json")
 
 
 def _save_cache(payload: dict) -> None:
@@ -216,7 +229,7 @@ def _auto_tribunal(incident: dict) -> None:
     try:
         from lib.agent_swarm import run_tribunal
 
-        tribunal_cache = Path("/tmp/aegis_last_tribunal.json")
+        tribunal_cache = _get_cache_path("aegis_last_tribunal.json")
         result = run_tribunal(
             ticker=incident["ticker"],
             incident=incident["description"],

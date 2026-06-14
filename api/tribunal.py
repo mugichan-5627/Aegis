@@ -17,7 +17,20 @@ load_dotenv(ROOT / ".env")
 
 from lib.agent_swarm import run_tribunal, _fallback
 
-TRIBUNAL_CACHE = Path("/tmp/aegis_last_tribunal.json")
+def _get_cache_path(filename: str) -> Path:
+    p = Path(f"/tmp/{filename}")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        test_file = p.parent / ".write_test"
+        test_file.write_text("test")
+        test_file.unlink()
+        return p
+    except Exception:
+        fallback = ROOT / "tmp" / filename
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+TRIBUNAL_CACHE = _get_cache_path("aegis_last_tribunal.json")
 
 _STATIC_FALLBACK = {
     "rounds": [

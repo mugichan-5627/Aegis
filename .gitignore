@@ -22,3 +22,12 @@ Thumbs.db
 db.sqlite3
 
 .vercel
+
+# Large media — exceeds GitHub's 100MB file limit
+*.mp4
+
+# Nested git repo / vendored tooling (~1.4GB, has its own .git)
+ppt-master/
+
+# Microsoft Office temporary lock files
+~$*

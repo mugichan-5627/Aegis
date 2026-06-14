@@ -63,9 +63,22 @@ def compute_portfolio_beta(tickers: Iterable[str]) -> float:
 
 
 def get_sector(ticker: str) -> str:
-    """Return yfinance sector, falling back to Unknown."""
+    """Return the most specific yfinance classification for a listed equity.
+
+    Prefers the granular ``industry`` field (e.g. "Aerospace & Defense",
+    "Semiconductors", "Oil & Gas Refining & Marketing") over the broad
+    ``sector`` field (e.g. "Industrials"), since the industry label is far more
+    informative and is populated for both US and Indian (.NS / .BO) listings.
+    Falls back to ``sector``, then "Unknown".
+    """
     try:
-        sector = yf.Ticker(normalize_ticker(ticker)).info.get("sector")
-        return str(sector) if sector else "Unknown"
+        info = yf.Ticker(normalize_ticker(ticker)).info
+        industry = info.get("industry")
+        if industry:
+            return str(industry)
+        sector = info.get("sector")
+        if sector:
+            return str(sector)
     except Exception:
-        return "Unknown"
+        pass
+    return "Unknown"

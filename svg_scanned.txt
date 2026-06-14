@@ -1,0 +1,317 @@
+
+================ 01_cover.svg ================
+  OPENAI × OUTSKILL HACKATHON
+  SWARM: ACTIVE
+  AEGIS CODEX
+  AEGIS CODEX
+  AUTONOMOUS GEOPOLITICAL & FINANCIAL RISK INTELLIGENCE
+  ACTIVE GEOPOLITICAL PORTFOLIO STRESSING ENGINE
+  3
+  SWARM AGENTS
+  12
+  REAL-TIME API SCANS
+  LIVE
+  ARIZE TRACING
+  "Every portfolio has
+   a breaking point. We
+   expose it via debate."
+  TEAM: AEGIS  |  PRESENTER: MOOSA TALHA AL KASERI  |  IIM KOZHIKODE  |  BATCH 29
+  BUILT WITH: OPENAI CODEX | NVIDIA NIM | ARIZE PHOENIX
+  SLIDE 01 / 09
+
+================ 02_problem.svg ================
+  THE PROBLEM / PORTFOLIO GEOPOLITICAL BLIND SPOTS
+  01 · TAIL RISK BLINDSPOTS & SILOED ANALYSIS
+  01
+  MACRO SPEED DECAY
+  Traditional models take weeks to assess macro shocks. Geopolitical events compress
+  asset values in hours. Delay is an invitation to capital destruction.
+   
+  02
+  LLM ECHO CHAMBERS
+  Single-perspective AI risk summaries suffer from severe confirmation bias.
+  Structured adversarial debate is mandatory to steel-manned extreme scenarios.
+   
+  03
+  THE TELEMETRY BLACK BOX
+  Most agentic architectures run as unmonitored loops. Deploying live
+  stress-testing without auditable telemetry is a major operational risk.
+   
+  93%
+  OF FINANCIAL FIRMS CONCERNED ABOUT TAIL-RISK EXPOSURE
+  YET FEW HAVE SYSTEMATIC TOOLS TO MODEL REAL-TIME CRISES
+  — INSTITUTIONAL RISK SURVEY 2026
+  THE SYSTEMIC OPPORTUNITY
+  No tool identifies specific Black Swan risks, validates them
+  adversarially, maps geographic propagation, models contagion
+  cascades, and computes distressed valuations transparently.
+  > AEGIS CODEX RUNS THIS IN UNDER 60 SECONDS
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 02 / 09
+
+================ 03_solution.svg ================
+  PROPOSED SOLUTION & JOURNEY / 4-STEP WATERFALL
+  02 · THE END-TO-END RISK WATERFALL FLOW
+  PHASE 1: INTELLIGENCE GATHERING
+  01
+  PORTFOLIO INGEST
+  User imports asset watchlist
+  via CSV or text input.
+  02
+  WATCHTOWER SCAN
+  Searches Tavily & yFinance
+  to output localized Chaos Index.
+  03
+  TRIBUNAL SWARM
+  Bear & Bull Analysts debate
+  scenarios with Judge verdict.
+  04
+  VALUATION PATCH
+  Generates model stress patch
+  and Investment Committee memo.
+  PHASE 2: ADVERSARIAL ANALYSIS & HEDGING
+  05
+  TELEMETRY RECORD
+  Traces all prompt inputs, outputs,
+  and span latencies live to Arize Phoenix.
+  06
+  PORTFOLIO HEDGE
+  Executes option-hedging rules
+  (protective puts) to preserve capital.
+  07
+  HUMAN REVIEW GATE
+  Investment Committee reviews
+  and approves distressed WACC changes.
+  ⚡ 3 SWARM AGENTS · OPENAI CODEX + NVIDIA NIM ORCHESTRATION · ARIZE PHOENIX TELEMETRY
+  Primary models: OpenAI Codex endpoint for code generation, Nvidia NIM Llama 3.3 70B for debates.
+  Observability link: Synchronous OTel trace shipper logs agent steps directly to Arize Phoenix SaaS.
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 03 / 09
+
+================ 04_innovation.svg ================
+  MULTI-AGENT SWARM / CO-ORDINATION
+  03 · 3 SWARM AGENTS + HUMAN REVIEW + CODEX PATCHING
+  BEAR ANALYST
+  PROSECUTION
+  Temp: T = 0.6
+  Argues worst-case scenario
+  with historical precedents
+  and catastrophic framing.
+  Pushes WACC premiums and
+  revenue haircuts upwards.
+  Acts as adversarial
+  counterweight to bull.
+  BULL ANALYST
+  DEFENSE
+  Temp: T = 0.6
+  Challenges evidence,
+  presents mitigating factors,
+  and argues the market
+  has already priced the
+  risk in. Pushes WACC
+  premiums and severity
+  metrics downwards.
+  FRACTURE JUDGE
+  FINAL VERDICT
+  Temp: T = 0.3
+  Low-temperature,
+  high-conviction arbiter.
+  Synthesizes debate.
+  Computes final severity
+  score and extracts proposed
+  stress assumptions to the
+  valuation engine.
+  HUMAN REVIEW GATE
+  EXECUTIVE GATE
+  Type: PM OVERRIDE
+  Pauses automation for
+  executive override.
+  PM reviews the tribunal's
+  consensus and selects:
+  Approve, Soften (-15%),
+  or Dismiss, to adjust
+  valuations manually.
+  CODEX PATCHING
+  CODE GENERATION
+  Model: CODEX
+  Auto-generates a Python
+  stress module subclass
+  stub via OpenAI Codex
+  to dynamically inject
+  stress variables into
+  the valuation engine.
+  WHY ADVERSARIAL SWARMS? // STRENGTHS VS. SINGLE-AGENT BIAS
+  ● Single-agent analysis always creates severe confirmation bias. Adversarial architectures force steel-manning before judgement is passed.
+  ● Mimics institutional Investment Committee (IC) processes: Research Analyst discovery → IC Debate → final PM decision.
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 04 / 09
+
+================ 05_tech_stack.svg ================
+  TECHNOLOGY STACK / PLATFORM INTEGRATIONS
+  04 · ORCHESTRATION, OBSERVABILITY & COMPUTE STACK
+  ORCHESTRATION
+  OpenAI Codex + Nvidia NIM
+  ● Primary Codex endpoint for model patch code
+  ● Failover to Nvidia NIM Llama 3.3 70B for debates
+  OBSERVABILITY
+  Arize Phoenix (OTel)
+  ● Logs spans, inputs, & prompt token counts
+  ● Synchronous trace shipper for serverless dev
+  DATA GROUNDING
+  Tavily Search + yFinance
+  ● Live geopolitical news feeds avoid hallucination
+  ● yFinance pulls quotes & historical drawdowns
+  COMPUTE STACK
+  Vercel Serverless
+  ● REST APIs run on serverless python functions
+  ● Low latency executions without persistent VM
+  FRONTEND LAYER
+  HTML5 / Vanilla CSS
+  ● High contrast dark dashboard interface
+  ● Collapsing trace tree explorer & radar canvas
+  OTLP TELEMETRY
+  Arize Phoenix SaaS
+  ● Spans, token parameters, & prompt counts
+  ● Direct OTLP trace files exported to SaaS link
+  OBSERVABILITY & HACKATHON CRITERIA
+  ▸ Serverless telemetry: Synchronous trace shipper ensures OTel data ingestion before lambda container suspension
+  ▸ Grounded AI: Every agent output is anchored in live financial metrics and real-time news search results
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 05 / 09
+
+================ 06_plan.svg ================
+  IMPLEMENTATION PLAN / ROADMAP
+  05 · PRODUCT DEPLOYMENT & MILESTONES ROADMAP
+  N1
+  IMMEDIATE
+  SEC EDGAR 10-K Item 1A auto-parsing
+  ● Auto-parse Item 1A
+    filing risk sections
+  N2
+  NEXT WEEKS
+  SEBI / BSE filing integration for Indian equities
+  ● Support Indian equities
+  ● Deep regulatory scans
+  Q3
+  QUARTER 3
+  Portfolio-level analysis + cross-holding correlation
+  ● Cross-holding correlations
+  ● McKinsey-style PDF reports
+  Q4
+  QUARTER 4
+  "Lying Gap" news vs filing divergence = alpha signal
+  ● News vs filing divergence
+  ● Slack/Teams alarms
+  ⚡ VALUE ADDED ROADMAP ENHANCEMENTS
+  ● "Lying Gap" detection (Q4) surfaces alpha signals when company filing statements significantly diverge from live geopolitical search streams.
+  ● Macro Feedback loops dynamically scale global baseline fear indexes, scaling asset haircuts non-linearly if Chaos scores exceed 0.8.
+  ● Slack and Teams webhook alerting ensures portfolio managers receive immediate verdicts directly on corporate devices.
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 06 / 09
+
+================ 07_impact.svg ================
+  FEASIBILITY & GO-TO-MARKET MODEL
+  06 · BUSINESS MODEL, TIERING & HIGH UNIT MARGINS
+  FREE / RETAIL
+  $0 / MONTH
+  ● Retail & Student access
+  ● 3 watchlist analyses/day
+  ● Main funnel lead generation
+  PRO TIER
+  $99 - $299 / MO
+  ● Analysts, RIAs & Small funds
+  ● Unlimited risk scan vectors
+  ● PDF IC memo exports & API
+  INSTITUTIONAL
+  $2K - $10K / MO
+  ● Hedge funds, PE, Family offices
+  ● White-label integrations
+  ● SEC EDGAR / SEBI compliance
+  API SERVICE
+  PER-CALL METER
+  ● Fintechs & Robo-advisors
+  ● Embeddable stress modules
+  ● Direct programmatic access
+  AEGIS PLATFORM UNIT ECONOMICS
+  OpenAI / NVIDIA API Cost
+  Extracts, filters, and formats structured parameters
+  $0.03 - $0.08
+  Tavily Search Cost
+  Triggers 6 parallel web-scrape intelligence paths
+  $0.01 - $0.02
+  GROSS MARGIN AT SCALE: >95%
+  EXCEL UNIT METRICS
+  EMERGING MARKET (BSE/NSE) MOAT
+  Western risk analytics engines neglect emerging market micro-structures.
+  Aegis Codex fills this gap with native Indian market feeds (NSE/BSE),
+  providing a massive data and positioning moat for local asset managers.
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 07 / 09
+
+================ 08_future_scope.svg ================
+  INNOVATIONS & FUTURE SCOPE
+  07 · PRODUCT DIFFERENTIATORS & NOVEL METHODOLOGY
+  01
+  CONTEXT-AWARE
+  VALUATIONS
+  Five distinct valuation
+  methodologies dynamically
+  routed based on sector.
+  Banks are stress-tested
+  via P/BV; cyclicals via
+  EBITDA; and high growth
+  equities via EV/Revenue.
+  All haircuts are market
+  anchored and downward.
+  02
+  GEOGRAPHIC
+  INTELLIGENCE
+  Every identified threat is
+  instantly mapped to its
+  physical coordinates.
+  Curved convergence lines
+  illustrate concentration
+  of supply chain vulnerability,
+  instantly visualising exposure
+  risks globally in under
+  60 seconds.
+  03
+  CONTAGION
+  CASCADES
+  Models Risk A → Effect B →
+  Effect C propagation chain.
+  Computes compound correlation
+  (ρ → 1) as baseline market
+  chaos index steps up.
+  Inspired by Kiyotaki-Moore
+  credit cycles and
+  Minsky Moment asset
+  repricing formulas.
+  04
+  METHODOLOGY
+  TRANSPARENCY
+  No proprietary black boxes.
+  Every mathematical formula
+  is shown explicitly with the
+  actual parameters plugged in.
+  Every routing decision is
+  fully flagged, and agent
+  reasoning traces are visible
+  for complete auditable
+  reproducibility.
+  ⚡ COMPARED TO MARKET STANDARDS
+  ● Standard tools like Bloomberg or MSCI Barra utilize static, historical parameters and require days of manually configured scenarios.
+  ● Aegis Codex uses real-time LLM tribunal debates to instantly generate forward-looking, highly localized, and mathematically transparent stress tests.
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 08 / 09
+
+================ 09_conclusion.svg ================
+  OPENAI × OUTSKILL HACKATHON 2026 // SYSTEM TERMINUS
+  "THE NEXT CRISIS WON'T LOOK LIKE THE LAST ONE."
+  Aegis Codex doesn't predict which domino falls — it maps every domino,
+  debates which are unstable, and calculates what happens when they all fall at once.
+  MOOSA TALHA AL KASERI
+  IIM Kozhikode · Batch 29 | Aegis Platform Lead
+  github.com/mugichan-5627/Aegis_Codex
+  AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+  SLIDE 09 / 09

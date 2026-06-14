@@ -2,7 +2,7 @@ import json
 import os
 import sys
 import mimetypes
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 # Add root directory to sys.path so api modules can import from lib
@@ -131,7 +131,7 @@ class DevRequestHandler(BaseHTTPRequestHandler):
 
 def run(port=3000):
     server_address = ('', port)
-    httpd = HTTPServer(server_address, DevRequestHandler)
+    httpd = ThreadingHTTPServer(server_address, DevRequestHandler)
     print(f"\n========================================================")
     print(f" Aegis Codex Local Dev Server Started!")
     print(f" URL: http://localhost:{port}")

@@ -1,0 +1,256 @@
+
+================ SLIDE 1 ================
+Shape 1 (Text 1):
+  P0: [ OPENAI × OUTSKILL HACKATHON — LIVE SYSTEM ]
+Shape 2 (Text 2):
+  P0: SWARM ACTIVE
+Shape 4 (Text 4):
+  P0: SWARM ACTIVE
+Shape 6 (Text 6):
+  P0: THREAT: HIGH
+Shape 13 (Text 13):
+  P0: [!]
+Shape 14 (Text 14):
+  P0:  AEGIS_CODEX
+Shape 15 (Text 16):
+  P0:  ACTIVE GEOPOLITICAL PORTFOLIO STRESSING ENGINE
+Shape 17 (Text 18):
+  P0: "Every portfolio has a breaking point. We expose it with an auditable swarm debate."
+Shape 19 (Text 20):
+  P0: 3
+Shape 20 (Text 21):
+  P0: SWARM AGENTS
+Shape 22 (Text 23):
+  P0: 12
+Shape 23 (Text 24):
+  P0: REAL-TIME API SCANS
+Shape 25 (Text 26):
+  P0: LIVE
+Shape 26 (Text 27):
+  P0: ARIZE TRACING
+Shape 28 (Text 29):
+  P0: BUILT WITH:  OPENAI CODEX  |  NVIDIA NIM  |  ARIZE PHOENIX  |  VERCEL SERVERLESS
+Shape 29 (Text 30):
+  P0: MOOSA TALHA  //  IIM KOZHIKODE  //  BATCH 29
+
+================ SLIDE 2 ================
+Shape 0 (Text 0):
+  P0: // 01  THE PROBLEM
+Shape 1 (Text 1):
+  P0: PORTFOLIO BLIND SPOTS IN GEOPOLITICAL CRISES
+Shape 5 (Text 5):
+  P0: [01] MACRO SPEED DECAY
+Shape 6 (Text 6):
+  P0: Traditional models take weeks to assess macro shocks. Geopolitical events compress asset values in hours. Delay is an invitation to capital destruction.
+Shape 9 (Text 9):
+  P0: [02] LLM ECHO CHAMBERS
+Shape 10 (Text 10):
+  P0: Single-perspective AI risk summaries suffer from severe confirmation bias. Structured adversarial debate is mandatory to steel-manned extreme scenarios.
+Shape 13 (Text 13):
+  P0: [03] THE TELEMETRY BLACK BOX
+Shape 14 (Text 14):
+  P0: Most agentic architectures run as unmonitored loops. Deploying live stress-testing without auditable telemetry is a major operational risk.
+Shape 17 (Text 17):
+  P0: THE GAP
+Shape 18 (Text 18):
+  P0: No unified system exists that scans news threats — runs adversarial debates (Bear vs. Bull) — generates WACC/haircut stresses — and exports auditable Arize telemetry traces in seconds.
+Shape 20 (Text 20):
+  P0: 93%
+Shape 21 (Text 21):
+  P0: OF FINANCIAL FIRMS CONCERNED ABOUT TAIL-RISK EXPOSURE
+Shape 22 (Text 22):
+  P0: YET FEW HAVE SYSTEMATIC TOOLS TO MODEL REAL-TIME CRISES
+Shape 23 (Text 23):
+  P0: — INSTITUTIONAL RISK SURVEY 2026
+Shape 25 (Text 25):
+  P0: AEGIS CODEX — PROPRIETARY & CONFIDENTIAL
+
+================ SLIDE 3 ================
+Shape 0 (Text 0):
+  P0: // 02  PROPOSED SOLUTION & JOURNEY
+Shape 1 (Text 1):
+  P0: AEGIS CODEX: THE 4-STEP RISK WATERFALL
+Shape 5 (Text 5):
+  P0: 01
+Shape 6 (Text 6):
+  P0: PORTFOLIO INGEST
+Shape 7 (Text 7):
+  P0: User imports asset watchlist
+Shape 11 (Text 11):
+  P0: 02
+Shape 12 (Text 12):
+  P0: WATCHTOWER SCAN
+Shape 13 (Text 13):
+  P0: Searches Tavily/yFinance to output localized Chaos Index
+Shape 17 (Text 17):
+  P0: 03
+Shape 18 (Text 18):
+  P0: TRIBUNAL SWARM
+Shape 19 (Text 19):
+  P0: Bear and Bull Analysts debate; Black Swan Judge synthesizes WFV
+Shape 23 (Text 23):
+  P0: 04
+Shape 24 (Text 24):
+  P0: VALUATION PATCH
+Shape 25 (Text 25):
+  P0: Generates revised IC stress memo and model patch code via Codex
+Shape 28 (Text 28):
+  P0: 05
+Shape 29 (Text 29):
+  P0: TELEMETRY RECORD
+Shape 30 (Text 30):
+  P0: Traces all prompt inputs, outputs, and latencies live to Arize
+Shape 33 (Text 33):
+  P0: 06
+Shape 34 (Text 34):
+  P0: PORTFOLIO HEDGE
+Shape 35 (Text 35):
+  P0: Executes option-hedging rules (protective puts) to preserve capital
+Shape 38 (Text 38):
+  P0: 07
+Shape 39 (Text 39):
+  P0: HUMAN REVIEW
+Shape 40 (Text 40):
+  P0: Investment Committee reviews and approves distressed WACC changes
+Shape 42 (Text 42):
+  P0: ◀  PHASE 1: AUTOMATED THREAT DISCOVERY
+Shape 43 (Text 43):
+  P0: ◀  PHASE 2: ADVERSARIAL ANALYSIS & HEDGING
+Shape 45 (Text 45):
+  P0: ⚡  3 SWARM AGENTS  ·  OPENAI CODEX + NVIDIA NIM ORCHESTRATION  ·  ARIZE PHOENIX TELEMETRY
+
+================ SLIDE 4 ================
+Shape 0 (Text 0):
+  P0: // 03  SYSTEM TECH STACK
+Shape 1 (Text 1):
+  P0: SERVERLESS AGENT ORCHESTRATION & TELEMETRY
+Shape 5 (Text 5):
+  P0: ORCHESTRATION
+Shape 6 (Text 6):
+  P0: OpenAI Codex + NVIDIA NIM
+Shape 8 (Text 8):
+  P0: T=0.3
+Shape 10 (Text 10):
+  P0: Primary Codex endpoint for model patch code generation with auto-failover to NVIDIA NIM Llama-3.3-70B-Instruct for swarm debates.
+Shape 13 (Text 13):
+  P0: OBSERVABILITY
+Shape 14 (Text 14):
+  P0: Arize Phoenix (OTel)
+Shape 16 (Text 16):
+  P0: T=0.1
+Shape 18 (Text 18):
+  P0: Logs trace spans, agent inputs, and prompt token parameters to Phoenix SaaS, with synchronous shipping configured for serverless execution.
+Shape 21 (Text 21):
+  P0: DATA GROUNDING
+Shape 22 (Text 22):
+  P0: Tavily Search + yFinance
+Shape 24 (Text 24):
+  P0: T=0.5
+Shape 26 (Text 26):
+  P0: Retrieves real-time geopolitical news feeds and historical asset prices/multi-factor beta parameters to avoid hallucinations.
+Shape 29 (Text 29):
+  P0: COMPUTE
+Shape 30 (Text 30):
+  P0: Vercel Serverless
+Shape 32 (Text 32):
+  P0: T=0.0
+Shape 34 (Text 34):
+  P0: Backend converted to lightweight Python serverless functions, enabling high-performance REST APIs without persistent server overhead.
+Shape 37 (Text 37):
+  P0: FRONTEND
+Shape 38 (Text 38):
+  P0: HTML5 / Vanilla CSS
+Shape 40 (Text 40):
+  P0: T=0.0
+Shape 42 (Text 42):
+  P0: A high-contrast single-page dashboard featuring responsive grid layouts, telemetry SVG animations, and collapsible trace explorers.
+Shape 44 (Text 44):
+  P0: ▸ Serverless telemetry: Synchronous trace shipper ensures OTel data ingestion before lambda container suspension
+Shape 45 (Text 45):
+  P0: ▸ Grounded AI: Every agent output is anchored in live financial metrics and real-time news search results
+
+================ SLIDE 5 ================
+Shape 0 (Text 0):
+  P0: // 04  TARGET AUDIENCE & VALUE PROPOSITION
+Shape 1 (Text 1):
+  P0: MARKET FIT: PROACTIVE TAIL-RISK HEDGING
+Shape 5 (Text 5):
+  P0: A1
+Shape 6 (Text 6):
+  P0: BUY-SIDE ASSET MANAGERS
+Shape 7 (Text 7):
+  P0: Active fund managers and retail RIAs holding concentrated semiconductor/hardware positions susceptible to sudden regulatory and trade friction.
+Shape 10 (Text 10):
+  P0: A2
+Shape 11 (Text 11):
+  P0: RISK MANAGEMENT TEAMS
+Shape 12 (Text 12):
+  P0: Institutional risk officers seeking transparent, auditable alternatives to static annual spreadsheets. OpenTelemetry traces make agent logic verifiable.
+Shape 15 (Text 15):
+  P0: A3
+Shape 16 (Text 16):
+  P0: HEDGE FUNDS
+Shape 17 (Text 17):
+  P0: Quantitative and macro trading desks looking to extract structural alpha by identifying and pricing geopolitical risks before the broader market.
+Shape 20 (Text 20):
+  P0: A4
+Shape 21 (Text 21):
+  P0: PORTFOLIO HEDGING VALUE
+Shape 22 (Text 22):
+  P0: Automates Option Overlay strategies, computing WACC premiums and recommending protective puts before options market prices in the volatility spike.
+Shape 25 (Text 25):
+  P0: AEGIS vs. PEERS
+Shape 26 (Text 26):
+  P0: CAPABILITY
+Shape 27 (Text 27):
+  P0: AEGIS
+Shape 28 (Text 28):
+  P0: PEERS
+Shape 31 (Text 31):
+  P0: Adversarial Swarm consensus
+Shape 32 (Text 32):
+  P0: ✓
+Shape 33 (Text 33):
+  P0: ✗
+Shape 34 (Text 34):
+  P0: Real-time search grounding
+Shape 35 (Text 35):
+  P0: ✓
+Shape 36 (Text 36):
+  P0: ✗
+Shape 38 (Text 38):
+  P0: Arize Phoenix tracing
+Shape 39 (Text 39):
+  P0: ✓
+Shape 40 (Text 40):
+  P0: ✗
+Shape 41 (Text 41):
+  P0: Vercel serverless scale
+Shape 42 (Text 42):
+  P0: ✓
+Shape 43 (Text 43):
+  P0: ✗
+Shape 45 (Text 45):
+  P0: Model code patch output
+Shape 46 (Text 46):
+  P0: ✓
+Shape 47 (Text 47):
+  P0: ✗
+Shape 48 (Text 48):
+  P0: Transparent formulas
+Shape 49 (Text 49):
+  P0: ✓
+Shape 50 (Text 50):
+  P0: ✗
+Shape 52 (Text 52):
+  P0: Analysis latency
+Shape 53 (Text 53):
+  P0: <15s
+Shape 54 (Text 54):
+  P0: Weeks
+Shape 55 (Text 55):
+  P0: Valuation methods
+Shape 56 (Text 56):
+  P0: 3 (DCF/EBITDA/BV)
+Shape 57 (Text 57):
+  P0: Static %
