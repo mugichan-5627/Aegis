@@ -1495,6 +1495,53 @@ function typewrite(id, text, cb) {
   }, 16);
 }
 
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function shortText(text, max = 240) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  return clean.length > max ? clean.slice(0, max - 1).trim() + '...' : clean;
+}
+
+function getRound(msgs, role) {
+  return (msgs || []).find(m => m.role === role) || {};
+}
+
+function verdictWhyHtml(inc, msgs) {
+  const bear = getRound(msgs, 'bear');
+  const bull = getRound(msgs, 'bull');
+  const judge = getRound(msgs, 'judge');
+  const a = ACTIVE_ASSUMPTIONS || {};
+  const rows = [
+    ['Bear pressure', bear.text, 'var(--red)'],
+    ['Bull offset', bull.text, 'var(--teal)'],
+    ['Judge synthesis', judge.text, 'var(--amber)'],
+  ];
+  const assumptions = [
+    `Revenue haircut ${Number(a.revenue_haircut_pct || 0).toFixed(1)}%`,
+    `Margin compression ${Math.round(Number(a.margin_compression_bps || 0))} bps`,
+    `WACC premium ${Math.round(Number(a.wacc_premium_bps || 0))} bps`,
+    `Terminal growth ${Number(a.terminal_growth_delta || 0).toFixed(1)} pts`,
+  ];
+  return `
+    <div style="color:var(--text);font-size:13px;line-height:1.8;margin-bottom:10px">
+      ${esc(inc.ticker)} is flagged as <strong>${esc(inc.sev)}</strong> because ${esc(inc.desc)}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${rows.map(([label, text, color]) => `
+        <div style="background:var(--bg3);border:1px solid var(--border);border-left:2px solid ${color};border-radius:var(--radius);padding:9px 10px">
+          <div style="color:${color};font-size:10px;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">${label}</div>
+          <div style="color:var(--muted);font-size:12px;line-height:1.7">${esc(shortText(text, 360))}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div style="margin-top:10px;color:var(--muted);font-size:11px;line-height:1.8">
+      Model impact: ${assumptions.map(esc).join(' · ')}. These values explain the valuation stress, not just the final label.
+    </div>
+  `;
+}
+
 function updateVerdictFromTribunal(inc, msgs, data) {
   // Verdict label
   const label = document.getElementById('verdict-label');
@@ -1503,12 +1550,9 @@ function updateVerdictFromTribunal(inc, msgs, data) {
   // IC memo — use judge message text if available
   const judgeMsg = msgs.find(m => m.role === 'judge');
   const memoEl = document.getElementById('verdict-memo');
-  if (memoEl && judgeMsg) {
+  if (memoEl) {
     memoEl.style.color = '';
-    memoEl.innerHTML = judgeMsg.text.replace(
-      /(RECOMMENDATION[^.]+\.)/,
-      '<strong style="color:var(--text)">$1</strong>'
-    );
+    memoEl.innerHTML = verdictWhyHtml(inc, msgs);
   }
 
   // Stamp
@@ -1528,12 +1572,18 @@ function updateVerdictFromTribunal(inc, msgs, data) {
 
   // Top risks — extract from judge text
   const risksEl = document.getElementById('verdict-risks');
-  if (risksEl && judgeMsg) {
-    const sentences = judgeMsg.text.split(/[.!]/).map(s => s.trim()).filter(s => s.length > 30);
-    const riskSentences = sentences.slice(0, 3);
+  if (risksEl) {
+    const bearMsg = getRound(msgs, 'bear');
+    const bullMsg = getRound(msgs, 'bull');
+    const a = ACTIVE_ASSUMPTIONS || {};
+    const riskSentences = [
+      shortText(bearMsg.text || inc.desc, 160),
+      `Assumption stress: revenue ${Number(a.revenue_haircut_pct || 0).toFixed(1)}%, WACC +${Math.round(Number(a.wacc_premium_bps || 0))}bps.`,
+      shortText(`Offset to monitor: ${bullMsg.text || 'bull case unavailable'}`, 160),
+    ];
     const colors = ['tag-r', 'tag-r', 'tag-a'];
     risksEl.innerHTML = riskSentences.map((s, i) =>
-      `<div style="display:flex;gap:10px;align-items:baseline"><span class="tag ${colors[i] || 'tag-b'}">R${i+1}</span><span style="color:var(--muted)">${s}</span></div>`
+      `<div style="display:flex;gap:10px;align-items:baseline"><span class="tag ${colors[i] || 'tag-b'}">R${i+1}</span><span style="color:var(--muted)">${esc(s)}</span></div>`
     ).join('');
   }
 
@@ -1550,10 +1600,10 @@ function updateVerdictFromTribunal(inc, msgs, data) {
   }
 
   // Update LLM Patch tab with ticker-specific content
-  updateLlmFromIncident(inc);
+  updateLlmFromIncident(inc, msgs);
 }
 
-function updateLlmFromIncident(inc) {
+function updateLlmFromIncident(inc, msgs = []) {
   const taskId = document.getElementById('cx-task-id');
   const triggeredBy = document.getElementById('cx-triggered-by');
   const objective = document.getElementById('cx-objective');
@@ -1561,12 +1611,15 @@ function updateLlmFromIncident(inc) {
   const tests = document.getElementById('cx-tests');
   const testCount = document.getElementById('cx-test-count');
   const assumptions = ACTIVE_ASSUMPTIONS || {};
+  const now = new Date();
+  const stamp = now.toISOString().slice(0,10).replace(/-/g,'') + '_' + String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0');
+  const judge = getRound(msgs, 'judge');
 
   if (taskId) taskId.textContent = `AEGIS_PATCH_${stamp}_${inc.ticker}`;
   if (triggeredBy) triggeredBy.textContent = `${inc.ticker} — ${inc.sev} incident · chaos ${inc.chaos}`;
   if (objective) {
     objective.style.color = '';
-    objective.innerHTML = `Add a dedicated stress scenario module for <code style="color:var(--teal);background:rgba(0,229,204,0.07);padding:1px 5px;border-radius:3px">${inc.ticker}</code> to <code style="color:var(--blue);background:var(--blue-bg);padding:1px 5px;border-radius:3px">valuation_engine.py</code>. Current model applies generic revenue haircuts — patch implements scenario-specific stress assumptions from the tribunal verdict with tiered compliance paths and regulatory WACC premium curve.`;
+    objective.innerHTML = `Add a dedicated stress scenario module for <code style="color:var(--teal);background:rgba(0,229,204,0.07);padding:1px 5px;border-radius:3px">${esc(inc.ticker)}</code> to <code style="color:var(--blue);background:var(--blue-bg);padding:1px 5px;border-radius:3px">valuation_engine.py</code>. The patch is grounded in the active incident: ${esc(shortText(inc.desc, 170))} ${judge.text ? `Judge rationale: ${esc(shortText(judge.text, 180))}` : ''}`;
   }
   if (steps) {
     steps.innerHTML = [
@@ -1712,6 +1765,36 @@ const PATCH_LINES = [
   '<span style="color:#9ece6a">✓</span> test_regression_nvda_golden',
 ];
 
+function localPatchLines(inc) {
+  const ticker = inc?.ticker || 'TARGET';
+  const slug = ticker.toLowerCase().replace(/[^a-z0-9]/g,'_') || 'target';
+  const cls = ticker.replace(/[^a-zA-Z0-9]/g, '_').replace(/^(\d)/, 'T_$1');
+  const a = ACTIVE_ASSUMPTIONS || {};
+  return [
+    '<span style="color:#73daca"># Local fallback patch preview - API unavailable</span>',
+    '<span style="color:#7dcfff">from</span> dataclasses <span style="color:#7dcfff">import</span> dataclass',
+    '',
+    '<span style="color:#7dcfff">@dataclass</span>',
+    `<span style="color:#ff9e64">class</span> <span style="color:#e0af68">${esc(cls)}StressScenario</span>:`,
+    `    ticker: <span style="color:#9ece6a">str</span> = <span style="color:#9ece6a">'${esc(ticker)}'</span>`,
+    `    incident: <span style="color:#9ece6a">str</span> = <span style="color:#9ece6a">'${esc(shortText(inc?.desc || 'watchtower stress event', 90))}'</span>`,
+    `    revenue_haircut_pct: <span style="color:#9ece6a">float</span> = ${Number(a.revenue_haircut_pct || 20).toFixed(1)}`,
+    `    margin_compression_bps: <span style="color:#9ece6a">int</span> = ${Math.round(Number(a.margin_compression_bps || 300))}`,
+    `    wacc_premium_bps: <span style="color:#9ece6a">int</span> = ${Math.round(Number(a.wacc_premium_bps || 280))}`,
+    '',
+    '<span style="color:#7dcfff">def</span> <span style="color:#7aa2f7">apply_watchtower_stress</span>(base, scenario):',
+    '    base.revenue *= (1 - scenario.revenue_haircut_pct / 100)',
+    '    base.ebitda_margin -= scenario.margin_compression_bps / 10000',
+    '    base.wacc += scenario.wacc_premium_bps / 10000',
+    '    return base',
+    '',
+    '<span style="color:#73daca"># Tests generated:</span>',
+    `<span style="color:#9ece6a">OK</span> test_stress_${esc(slug)}_baseline`,
+    '<span style="color:#9ece6a">OK</span> test_wacc_regulatory_premium',
+    `<span style="color:#9ece6a">OK</span> test_regression_${esc(slug)}_golden`,
+  ];
+}
+
 let patchRunning = false;
 async function generatePatch() {
   if (patchRunning) return; patchRunning = true;
@@ -1719,21 +1802,42 @@ async function generatePatch() {
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-cpu" style="animation:spin 1s linear infinite;display:inline-block"></i> Generating...';
   const out = document.getElementById('patch-output'); out.style.display = 'block';
   const content = document.getElementById('patch-content'); content.innerHTML = '';
+  const patchJson = document.getElementById('scenario-patch-json');
+  const inc = INCIDENTS[ACTIVE];
   try {
-    const inc = INCIDENTS[ACTIVE];
-    if (!inc) { patchRunning = false; btn.disabled = false; btn.innerHTML = '<i class="ti ti-cpu"></i> Generate Patch Proposal'; return; }
+    if (!inc) {
+      content.textContent = 'No active incident loaded. Run Watchtower, select an incident, then generate a patch proposal.';
+      if (patchJson) patchJson.textContent = 'No active incident.';
+      patchRunning = false; btn.disabled = false; btn.innerHTML = '<i class="ti ti-cpu"></i> Generate Patch Proposal';
+      return;
+    }
+    const assumptions = {
+      revenue_haircut_pct: 20.0,
+      margin_compression_bps: 300,
+      wacc_premium_bps: 280,
+      terminal_growth_delta: -1.0,
+      ...(ACTIVE_ASSUMPTIONS || {}),
+      compliance_timeline_months: 12
+    };
+    const trigger = `${inc.sev || 'watch'}_${inc.ticker}_watchtower_signal`.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
     const data = await fetchJSON('/api/llm_patch', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         ticker: inc.ticker,
-        trigger_event: 'EAR_99_CHINA_GPU_EXPANSION',
-        assumptions: { ...ACTIVE_ASSUMPTIONS, china_revenue_exposure: 0.385, compliance_timeline_months: 12 }
+        trigger_event: trigger,
+        incident: inc.desc,
+        severity: inc.sev,
+        chaos_index: parseFloat(inc.chaos),
+        assumptions
       })
     }, 28000);
     if (!data || !data.scenario_patch) throw new Error('Malformed LLM patch response');
-    const patchJson = document.getElementById('scenario-patch-json');
     if (patchJson) patchJson.textContent = JSON.stringify(data.scenario_patch, null, 2);
+    if (data.task_id) {
+      const taskId = document.getElementById('cx-task-id');
+      if (taskId) taskId.textContent = data.task_id;
+    }
     const code = data.patch_code || data.llm_task || 'Patch proposal queued. No code was generated because LLM access is unavailable.';
     content.textContent = code;
     patchRunning = false; btn.disabled = false;
@@ -1741,8 +1845,18 @@ async function generatePatch() {
     return;
   } catch(e) {
     content.innerHTML = '';
+    if (patchJson && inc) {
+      patchJson.textContent = JSON.stringify({
+        scenario_id: `local_${inc.ticker.toLowerCase().replace(/[^a-z0-9]/g,'_')}_stress`,
+        trigger_event: `${inc.sev || 'watch'}_${inc.ticker}_watchtower_signal`,
+        incident: inc.desc,
+        assumptions: ACTIVE_ASSUMPTIONS || {},
+        human_approval_required: true,
+        fallback_reason: e.message || 'LLM patch API unavailable'
+      }, null, 2);
+    }
   }
-  PATCH_LINES.forEach((line, i) => {
+  localPatchLines(inc).forEach((line, i) => {
     setTimeout(() => {
       const el = document.createElement('div');
       el.innerHTML = line || '&nbsp;';

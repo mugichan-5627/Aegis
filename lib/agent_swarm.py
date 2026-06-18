@@ -125,25 +125,34 @@ def _fallback(ticker: str, incident: str = "", severity: str = "") -> dict:
         assumptions = dict(DEFAULT_ASSUMPTIONS)
         # Weave the live incident in so even the no-LLM path references the real
         # company, sector and price move rather than pure boilerplate.
+        profile = _company_context(normalized_ticker)
+        profile_line = ""
+        if profile:
+            compact = "; ".join(
+                line.replace("- ", "", 1)
+                for line in profile.splitlines()[:5]
+                if line.strip()
+            )
+            profile_line = f" Profile: {compact}."
         ctx = f" Trigger: {incident.strip()}" if incident else ""
         sev = (severity or "stress").lower()
         rounds = [
             {
                 "role": "bear",
                 "label": "Bear Analyst",
-                "text": f"{normalized_ticker} is flagged as a {sev}-level case.{ctx} The bear view treats this as a genuine repricing risk: investors discount near-term revenue quality before management can prove mitigation. Apply a revenue haircut, EBITDA margin compression and a higher risk premium until the signal cools.",
+                "text": f"{normalized_ticker} is flagged as a {sev}-level case.{ctx}{profile_line} The bear view treats the live signal as a genuine repricing risk for this company's exposed revenue base before management can prove mitigation. Apply a revenue haircut, EBITDA margin compression and a higher risk premium until the signal cools.",
                 "score": 7.4,
             },
             {
                 "role": "bull",
                 "label": "Bull Analyst",
-                "text": f"{normalized_ticker} retains offsetting strengths that can limit permanent impairment — pricing power, balance-sheet flexibility and demand rotation across its segments. The flagged move may overstate durable damage versus a transient dislocation. The case warrants monitoring, but the full bear scenario should not be treated as inevitable without confirming evidence.",
+                "text": f"{normalized_ticker} retains offsetting strengths that can limit permanent impairment.{profile_line} The bull view focuses on pricing power, balance-sheet flexibility and demand rotation across the company's actual business mix rather than assuming the headline shock flows one-for-one into intrinsic value. The case warrants monitoring, but the full bear scenario should not be treated as inevitable without confirming evidence.",
                 "score": 6.3,
             },
             {
                 "role": "judge",
                 "label": "Black Swan Judge",
-                "text": f"The tribunal assigns {normalized_ticker} a balanced but cautious {sev} verdict. The bear case wins on timing risk while the bull case matters for medium-term recovery. RECOMMENDATION - HEDGE or reduce exposure modestly until live indicators improve, then re-run valuation with the approved stress assumptions.",
+                "text": f"The tribunal assigns {normalized_ticker} a balanced but cautious {sev} verdict.{profile_line} The bear case wins on timing risk while the bull case matters for medium-term recovery through the company's own demand drivers and competitive position. RECOMMENDATION - HEDGE or reduce exposure modestly until live indicators improve, then re-run valuation with the approved stress assumptions.",
                 "score": 8.4,
             },
         ]
@@ -184,6 +193,48 @@ def _news_context(ticker: str, incident: str) -> str:
             if title or body:
                 lines.append(f"- {title}: {body[:170]}")
         # Keep the grounding compact so generation stays fast and reliable.
+        return "\n".join(lines)[:1400]
+    except Exception:
+        return ""
+
+
+def _company_context(ticker: str) -> str:
+    """Fetch a compact company profile for ticker-specific grounding."""
+    try:
+        import yfinance as yf
+
+        info = yf.Ticker(ticker).info or {}
+        fields = {
+            "name": info.get("longName") or info.get("shortName"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "country": info.get("country"),
+            "market_cap": info.get("marketCap"),
+            "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
+            "revenue_growth": info.get("revenueGrowth"),
+            "ebitda_margin": info.get("ebitdaMargins"),
+            "forward_pe": info.get("forwardPE"),
+            "beta": info.get("beta"),
+        }
+        lines = []
+        for key, value in fields.items():
+            if value is None or value == "":
+                continue
+            if key == "market_cap":
+                try:
+                    value = f"${float(value) / 1_000_000_000:.1f}B"
+                except Exception:
+                    pass
+            elif key in {"revenue_growth", "ebitda_margin"}:
+                try:
+                    value = f"{float(value) * 100:.1f}%"
+                except Exception:
+                    pass
+            lines.append(f"- {key.replace('_', ' ')}: {value}")
+
+        summary = str(info.get("longBusinessSummary") or "").strip()
+        if summary:
+            lines.append(f"- business summary: {summary[:520]}")
         return "\n".join(lines)[:1400]
     except Exception:
         return ""
@@ -236,6 +287,8 @@ def _normalize(payload: dict, ticker: str) -> dict:
     for idx, (role, label) in enumerate(roles):
         item = rounds[idx] if isinstance(rounds[idx], dict) else {}
         text = str(item.get("text") or item.get("argument") or fallback["rounds"][idx]["text"])
+        if len(text.split()) < 22 or ticker.upper() not in text.upper():
+            text = fallback["rounds"][idx]["text"]
         try:
             score = float(item.get("score", fallback["rounds"][idx]["score"]))
         except Exception:
@@ -308,12 +361,19 @@ def run_tribunal(
     # Ground the debate in real, current headlines (logged as its own span).
     news_span = arize_client.start_span(trace_id=trace_id, name="Tavily News Retrieval")
     news = _news_context(ticker, incident)
+    profile = _company_context(ticker)
     arize_client.complete_span(
         trace_id=trace_id,
         span_id=news_span["span_id"],
         inputs={"ticker": ticker, "incident": incident},
         outputs={"headlines": news[:1000] if news else "(none — Tavily unavailable)"},
         status="SUCCESS" if news else "SKIPPED",
+    )
+    profile_block = (
+        "\nCOMPANY PROFILE (use these specifics before broad market language):\n"
+        f"{profile}\n"
+        if profile
+        else ""
     )
     news_block = (
         "\nLIVE NEWS CONTEXT (cite specific facts, figures, products, customers, "
@@ -324,14 +384,17 @@ def run_tribunal(
     )
 
     prompt = f"""You are running an adversarial investment tribunal on {ticker}.
-{news_block}
+{profile_block}{news_block}
 Incident under review: {incident}
 Chaos index: {chaos_index} (0-1 scale). Severity: {severity}.
 
 Write three rounds of argument that are SPECIFIC to {ticker}. Reference the
-company's actual business segments, flagship products, major customers,
-competitors, and geographic revenue mix. Where the news context gives concrete
-facts or numbers, use them. Avoid boilerplate that could describe any company.
+company's actual business model, sector/industry, products or services, major
+customers or demand drivers, competitors, geography, valuation pressure and
+balance-sheet/risk profile where available. Where the profile or news context
+gives concrete facts or numbers, use them. Every round must name {ticker} and
+include at least two concrete company-specific facts. Avoid boilerplate that
+could describe any company.
 
 Return ONLY valid JSON (no markdown) matching this schema:
 {{
