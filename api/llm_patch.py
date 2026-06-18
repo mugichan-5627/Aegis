@@ -248,35 +248,6 @@ def _generate_patch_code(
     # Static stub if both APIs unavailable or model output fails validation.
     return _static_patch_code(ticker, assumptions)
 
-    # Static stub if both APIs unavailable
-    class_name = "".join(part.capitalize() for part in _slug(ticker).split("_")) or "Ticker"
-    tl = _slug(ticker)
-    return f"""# Generated stub — connect NVIDIA_API_KEY or OPENAI_API_KEY for AI-generated code
-from dataclasses import dataclass, field
-
-@dataclass
-class {class_name}StressScenario:
-    revenue_haircut_pct: float = {assumptions.get('revenue_haircut_pct', 28.5)}
-    wacc_premium_bps: int = {assumptions.get('wacc_premium_bps', 380)}
-    mitigation_timeline_months: int = {assumptions.get('compliance_timeline_months', 12)}
-    margin_compression_bps: int = {assumptions.get('margin_compression_bps', 420)}
-
-def apply_stress(base_valuation, scenario: {class_name}StressScenario):
-    base_valuation.revenue *= (1 - scenario.revenue_haircut_pct / 100)
-    base_valuation.wacc += scenario.wacc_premium_bps / 10000
-    base_valuation.ebitda_margin -= scenario.margin_compression_bps / 10000
-    return base_valuation
-
-def test_stress_{tl}_baseline():
-    pass  # TODO: assert revenue haircut applied correctly
-
-def test_wacc_regulatory_premium():
-    pass  # TODO: assert WACC delta = +{assumptions.get('wacc_premium_bps', 380)}bps
-
-def test_regression_{tl}_golden():
-    pass  # TODO: assert output within ±5% of golden snapshot
-"""
-
 
 def handle(payload: dict[str, Any]) -> dict:
     ticker = str(payload.get("ticker") or "NVDA").upper()
