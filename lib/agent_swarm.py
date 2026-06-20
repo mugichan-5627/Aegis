@@ -17,9 +17,8 @@ from lib.local_telemetry import GLOBAL_TRACE_CONSOLE, arize_client
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
-# Fast model keeps the tribunal reliably inside the serverless budget while
-# Tavily grounding (below) supplies the company-specific richness.
-NVIDIA_MODEL = "meta/llama-3.1-8b-instruct"
+NVIDIA_MODEL = os.environ.get("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
+NVIDIA_QUALITY_MODEL = os.environ.get("NVIDIA_QUALITY_MODEL")
 # Generous headroom so a slow-but-valid NIM response still lands instead of
 # dropping to the generic fallback. Stays under the 30s function budget once
 # Tavily (~2-3s) and overhead are added; the frontend waits 29s.
@@ -30,6 +29,54 @@ DEFAULT_ASSUMPTIONS = {
     "margin_compression_bps": 420,
     "wacc_premium_bps": 380,
     "terminal_growth_delta": -1.4,
+}
+
+CURATED_COMPANY_PROFILES = {
+    "AVGO": {
+        "name": "Broadcom Inc.",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "business_model": "AI networking silicon, custom accelerators, merchant switching, broadband/wireless chips, and infrastructure software after VMware.",
+        "demand_drivers": "Hyperscaler AI cluster spending, Ethernet switching upgrades, custom ASIC ramps, VMware subscription conversion, and enterprise infrastructure budgets.",
+        "key_risks": "Hyperscaler order concentration, AI networking digestion, VMware integration execution, China/export exposure, and high expectations embedded in AI semiconductor multiples.",
+        "peers": "NVIDIA, Marvell, AMD, Cisco, Arista, Qualcomm, Oracle infrastructure software.",
+    },
+    "MSFT": {
+        "name": "Microsoft Corporation",
+        "sector": "Technology",
+        "industry": "Software - Infrastructure",
+        "business_model": "Azure cloud, Office/Microsoft 365, Windows, LinkedIn, Dynamics, gaming, security, and AI copilots.",
+        "demand_drivers": "Azure consumption, AI infrastructure utilization, Copilot attach rates, enterprise renewals, and operating leverage in commercial cloud.",
+        "key_risks": "AI capex monetization lag, cloud growth deceleration, regulatory scrutiny, OpenAI dependency, and enterprise software budget pressure.",
+        "peers": "Amazon AWS, Google Cloud, Oracle Cloud, Salesforce, Adobe.",
+    },
+    "JPM": {
+        "name": "JPMorgan Chase & Co.",
+        "sector": "Financial Services",
+        "industry": "Banks - Diversified",
+        "business_model": "Consumer banking, commercial banking, investment banking, markets, payments, asset and wealth management.",
+        "demand_drivers": "Net interest income, credit quality, loan growth, trading volatility, investment banking fees, and deposit beta.",
+        "key_risks": "Credit cycle deterioration, deposit repricing, capital rules, commercial real estate exposure, and lower rate sensitivity.",
+        "peers": "Bank of America, Citi, Wells Fargo, Goldman Sachs, Morgan Stanley.",
+    },
+    "NVDA": {
+        "name": "NVIDIA Corporation",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "business_model": "Data-center GPUs, networking, CUDA software ecosystem, gaming GPUs, professional visualization, and automotive AI.",
+        "demand_drivers": "Hyperscaler AI training/inference capex, Blackwell/Hopper supply, networking attach, sovereign AI, and CUDA platform lock-in.",
+        "key_risks": "Export controls, hyperscaler digestion, custom ASIC substitution, gross-margin normalization, and extreme valuation expectations.",
+        "peers": "AMD, Broadcom, Marvell, Intel, custom silicon from Google/Amazon/Microsoft.",
+    },
+    "TSM": {
+        "name": "Taiwan Semiconductor Manufacturing Company",
+        "sector": "Technology",
+        "industry": "Semiconductors",
+        "business_model": "Pure-play foundry manufacturing for leading-edge and specialty semiconductor customers.",
+        "demand_drivers": "Advanced-node wafer demand, AI accelerator ramps, Apple/mobile cycles, HPC demand, and pricing power at 3nm/2nm.",
+        "key_risks": "Taiwan geopolitical risk, customer concentration, capex intensity, power/water constraints, and cyclicality in non-AI semis.",
+        "peers": "Samsung Foundry, Intel Foundry, GlobalFoundries, UMC, SMIC.",
+    },
 }
 
 FALLBACK_DEBATES = {
@@ -123,36 +170,32 @@ def _fallback(ticker: str, incident: str = "", severity: str = "") -> dict:
         assumptions = dict(data["proposed_assumptions"])
     else:
         assumptions = dict(DEFAULT_ASSUMPTIONS)
-        # Weave the live incident in so even the no-LLM path references the real
-        # company, sector and price move rather than pure boilerplate.
-        profile = _company_context(normalized_ticker)
-        profile_line = ""
-        if profile:
-            compact = "; ".join(
-                line.replace("- ", "", 1)
-                for line in profile.splitlines()[:5]
-                if line.strip()
-            )
-            profile_line = f" Profile: {compact}."
+        profile = _company_profile(normalized_ticker)
+        name = profile.get("name") or normalized_ticker
+        industry = profile.get("industry") or profile.get("sector") or "its sector"
+        business = _clean_fragment(profile.get("business_model") or profile.get("summary") or "its operating model")
+        demand = _clean_fragment(profile.get("demand_drivers") or "the next demand cycle")
+        risks = _clean_fragment(profile.get("key_risks") or "estimate risk, cost pressure and multiple compression")
+        peers = _clean_fragment(profile.get("peers") or "direct competitors")
         ctx = f" Trigger: {incident.strip()}" if incident else ""
         sev = (severity or "stress").lower()
         rounds = [
             {
                 "role": "bear",
                 "label": "Bear Analyst",
-                "text": f"{normalized_ticker} is flagged as a {sev}-level case.{ctx}{profile_line} The bear view treats the live signal as a genuine repricing risk for this company's exposed revenue base before management can prove mitigation. Apply a revenue haircut, EBITDA margin compression and a higher risk premium until the signal cools.",
+                "text": f"{normalized_ticker} ({name}) is flagged as a {sev}-level case in {industry}.{ctx} The bear case starts from its actual business mix: {business}. If the live signal persists, investors can mark down {demand} before management proves resilience; the exposed pressure points are {risks}. Relative to {peers}, the stock deserves a revenue haircut, margin compression and a higher risk premium until order activity, guidance or market action confirms the shock is fading.",
                 "score": 7.4,
             },
             {
                 "role": "bull",
                 "label": "Bull Analyst",
-                "text": f"{normalized_ticker} retains offsetting strengths that can limit permanent impairment.{profile_line} The bull view focuses on pricing power, balance-sheet flexibility and demand rotation across the company's actual business mix rather than assuming the headline shock flows one-for-one into intrinsic value. The case warrants monitoring, but the full bear scenario should not be treated as inevitable without confirming evidence.",
+                "text": f"{normalized_ticker}'s bull case is not a generic balance-sheet argument; it rests on the durability of {business}. The same drivers the bear case worries about, especially {demand}, can also absorb a temporary macro or supply-chain scare if customer demand remains intact. Against {peers}, the question is whether the incident changes normalized earnings power or only near-term positioning. Without confirming evidence of lost share, cancelled orders or structural margin damage, the full bear haircut should stay probabilistic rather than automatic.",
                 "score": 6.3,
             },
             {
                 "role": "judge",
                 "label": "Black Swan Judge",
-                "text": f"The tribunal assigns {normalized_ticker} a balanced but cautious {sev} verdict.{profile_line} The bear case wins on timing risk while the bull case matters for medium-term recovery through the company's own demand drivers and competitive position. RECOMMENDATION - HEDGE or reduce exposure modestly until live indicators improve, then re-run valuation with the approved stress assumptions.",
+                "text": f"The tribunal assigns {normalized_ticker} a balanced but cautious {sev} verdict because the incident is hitting a business where {business}. The Bear case wins the next-quarter timing argument through {risks}, while the Bull case depends on {demand} staying healthy versus {peers}. The right action is to stress valuation assumptions now, then update them when fresh guidance, order commentary or price action confirms whether this is cyclic noise or a real expectation reset. RECOMMENDATION - HEDGE or reduce exposure modestly until live indicators improve, then re-run valuation with the approved stress assumptions.",
                 "score": 8.4,
             },
         ]
@@ -198,13 +241,15 @@ def _news_context(ticker: str, incident: str) -> str:
         return ""
 
 
-def _company_context(ticker: str) -> str:
-    """Fetch a compact company profile for ticker-specific grounding."""
+def _company_profile(ticker: str) -> dict:
+    """Return a compact, structured company profile for tribunal grounding."""
+    normalized = (ticker or "").upper()
+    profile = dict(CURATED_COMPANY_PROFILES.get(normalized, {}))
     try:
         import yfinance as yf
 
         info = yf.Ticker(ticker).info or {}
-        fields = {
+        for key, value in {
             "name": info.get("longName") or info.get("shortName"),
             "sector": info.get("sector"),
             "industry": info.get("industry"),
@@ -215,29 +260,81 @@ def _company_context(ticker: str) -> str:
             "ebitda_margin": info.get("ebitdaMargins"),
             "forward_pe": info.get("forwardPE"),
             "beta": info.get("beta"),
-        }
-        lines = []
-        for key, value in fields.items():
-            if value is None or value == "":
-                continue
-            if key == "market_cap":
-                try:
-                    value = f"${float(value) / 1_000_000_000:.1f}B"
-                except Exception:
-                    pass
-            elif key in {"revenue_growth", "ebitda_margin"}:
-                try:
-                    value = f"{float(value) * 100:.1f}%"
-                except Exception:
-                    pass
-            lines.append(f"- {key.replace('_', ' ')}: {value}")
+            "summary": info.get("longBusinessSummary"),
+        }.items():
+            if value is not None and value != "" and not profile.get(key):
+                profile[key] = value
+    except Exception:
+        pass
+    return profile
 
-        summary = str(info.get("longBusinessSummary") or "").strip()
-        if summary:
-            lines.append(f"- business summary: {summary[:520]}")
-        return "\n".join(lines)[:1400]
+
+def _format_company_context(profile: dict) -> str:
+    lines = []
+    for key in (
+        "name",
+        "sector",
+        "industry",
+        "country",
+        "market_cap",
+        "current_price",
+        "revenue_growth",
+        "ebitda_margin",
+        "forward_pe",
+        "beta",
+        "business_model",
+        "demand_drivers",
+        "key_risks",
+        "peers",
+        "summary",
+    ):
+        value = profile.get(key)
+        if value is None or value == "":
+            continue
+        if key == "market_cap":
+            try:
+                value = f"${float(value) / 1_000_000_000:.1f}B"
+            except Exception:
+                pass
+        elif key in {"revenue_growth", "ebitda_margin"}:
+            try:
+                value = f"{float(value) * 100:.1f}%"
+            except Exception:
+                pass
+        text = str(value).strip()
+        if key == "summary":
+            text = text[:520]
+        lines.append(f"- {key.replace('_', ' ')}: {text}")
+    return "\n".join(lines)[:1800]
+
+
+def _clean_fragment(value: Any) -> str:
+    return str(value or "").strip().rstrip(".")
+
+
+def _company_context(ticker: str) -> str:
+    """Fetch a compact company profile for ticker-specific grounding."""
+    try:
+        return _format_company_context(_company_profile(ticker))
     except Exception:
         return ""
+
+
+def _specificity_score(text: str, ticker: str, profile: dict) -> int:
+    haystack = (text or "").lower()
+    score = 0
+    if ticker.lower() in haystack:
+        score += 1
+    for key in ("name", "industry", "business_model", "demand_drivers", "key_risks", "peers"):
+        value = str(profile.get(key) or "")
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9&.-]{3,}", value):
+            if token.lower() in haystack:
+                score += 1
+                break
+    banned = ("large liquid", "pricing power", "balance-sheet flexibility", "business mix", "headline shock")
+    if any(phrase in haystack for phrase in banned):
+        score -= 1
+    return score
 
 
 def _client_and_model() -> tuple[OpenAI | None, str | None]:
@@ -257,6 +354,18 @@ def _client_and_model() -> tuple[OpenAI | None, str | None]:
     return None, None
 
 
+def _model_candidates(primary: str | None) -> list[str]:
+    if not primary:
+        return []
+    candidates = []
+    if NVIDIA_QUALITY_MODEL:
+        candidates.append(NVIDIA_QUALITY_MODEL)
+    candidates.append(primary)
+    if primary != "meta/llama-3.1-8b-instruct":
+        candidates.append("meta/llama-3.1-8b-instruct")
+    return list(dict.fromkeys(candidates))
+
+
 def _extract_json(text: str) -> dict | None:
     try:
         return json.loads(text)
@@ -272,8 +381,52 @@ def _extract_json(text: str) -> dict | None:
         return None
 
 
-def _normalize(payload: dict, ticker: str) -> dict:
-    fallback = _fallback(ticker)
+def _run_llm_candidates(client: OpenAI, candidates: list[str], prompt: str) -> tuple[dict | None, str, str | None, list[str]]:
+    parsed = None
+    text = ""
+    selected_model = candidates[0] if candidates else None
+    errors: list[str] = []
+    for candidate in candidates:
+        create_kwargs = dict(
+            model=candidate,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are Aegis_Codex, an institutional crisis-valuation tribunal. You ground every argument in the specific company's core business, current environment, live news, recent market activity and forward expectations. Return strict JSON only, no markdown.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.28,
+            max_tokens=1200,
+            timeout=LLM_TIMEOUT_SECONDS,
+        )
+        try:
+            try:
+                response = client.chat.completions.create(
+                    response_format={"type": "json_object"}, **create_kwargs
+                )
+            except Exception:
+                response = client.chat.completions.create(**create_kwargs)
+            text = response.choices[0].message.content or ""
+            parsed = _extract_json(text)
+            if parsed:
+                selected_model = candidate
+                break
+            errors.append(f"{candidate}: JSON parse failure")
+        except Exception as exc:
+            errors.append(f"{candidate}: {exc}")
+    return parsed, text, selected_model, errors
+
+
+def _normalize(
+    payload: dict,
+    ticker: str,
+    profile: dict | None = None,
+    incident: str = "",
+    severity: str = "",
+) -> dict:
+    fallback = _fallback(ticker, incident, severity)
+    profile = profile or _company_profile(ticker)
     rounds = payload.get("rounds") if isinstance(payload, dict) else None
     if not isinstance(rounds, list) or len(rounds) < 3:
         return fallback
@@ -287,7 +440,8 @@ def _normalize(payload: dict, ticker: str) -> dict:
     for idx, (role, label) in enumerate(roles):
         item = rounds[idx] if isinstance(rounds[idx], dict) else {}
         text = str(item.get("text") or item.get("argument") or fallback["rounds"][idx]["text"])
-        if len(text.split()) < 22 or ticker.upper() not in text.upper():
+        min_specificity = 2 if any(profile.get(k) for k in ("business_model", "demand_drivers", "key_risks")) else 1
+        if len(text.split()) < 45 or _specificity_score(text, ticker, profile) < min_specificity:
             text = fallback["rounds"][idx]["text"]
         try:
             score = float(item.get("score", fallback["rounds"][idx]["score"]))
@@ -361,7 +515,8 @@ def run_tribunal(
     # Ground the debate in real, current headlines (logged as its own span).
     news_span = arize_client.start_span(trace_id=trace_id, name="Tavily News Retrieval")
     news = _news_context(ticker, incident)
-    profile = _company_context(ticker)
+    profile = _company_profile(ticker)
+    profile_text = _format_company_context(profile)
     arize_client.complete_span(
         trace_id=trace_id,
         span_id=news_span["span_id"],
@@ -371,8 +526,8 @@ def run_tribunal(
     )
     profile_block = (
         "\nCOMPANY PROFILE (use these specifics before broad market language):\n"
-        f"{profile}\n"
-        if profile
+        f"{profile_text}\n"
+        if profile_text
         else ""
     )
     news_block = (
@@ -388,20 +543,25 @@ def run_tribunal(
 Incident under review: {incident}
 Chaos index: {chaos_index} (0-1 scale). Severity: {severity}.
 
-Write three rounds of argument that are SPECIFIC to {ticker}. Reference the
-company's actual business model, sector/industry, products or services, major
-customers or demand drivers, competitors, geography, valuation pressure and
-balance-sheet/risk profile where available. Where the profile or news context
-gives concrete facts or numbers, use them. Every round must name {ticker} and
-include at least two concrete company-specific facts. Avoid boilerplate that
-could describe any company.
+Think like a senior public-equity analyst before writing. For each role, reason
+through this chain explicitly: (1) what {ticker} actually sells, (2) which
+revenue/margin driver the incident touches, (3) how current headlines or market
+activity change forward expectations over the next 1-4 quarters, (4) what
+evidence would confirm or falsify the thesis, and (5) the valuation implication.
+
+Every round must name {ticker} and include at least three concrete facts from
+the company profile, business model, demand drivers, risk list, peers, news
+context, recent market move, chaos index or severity. Do not use generic phrases
+like "large liquid franchise", "pricing power", "business mix", or "balance
+sheet flexibility" unless tied to a named segment, product, customer base,
+margin driver or peer comparison.
 
 Return ONLY valid JSON (no markdown) matching this schema:
 {{
   "rounds": [
-    {{"role":"bear","label":"Bear Analyst","text":"4-5 sentences: specific downside thesis with concrete, named drivers","score":7.8}},
-    {{"role":"bull","label":"Bull Analyst","text":"4-5 sentences: specific rebuttal naming real offsetting strengths","score":6.4}},
-    {{"role":"judge","label":"Black Swan Judge","text":"4-5 sentences synthesis ending with 'RECOMMENDATION - HEDGE/HOLD/REDUCE ...'","score":9.1}}
+    {{"role":"bear","label":"Bear Analyst","text":"5-7 sentences: company-specific downside thesis; name affected segment/product/demand driver, forward-estimate impact, market signal and evidence to watch","score":7.8}},
+    {{"role":"bull","label":"Bull Analyst","text":"5-7 sentences: company-specific rebuttal; name durable segment/product/demand driver, why the incident may not impair normalized earnings, peer/customer context and evidence to watch","score":6.4}},
+    {{"role":"judge","label":"Black Swan Judge","text":"5-7 sentences: synthesis; explain which thesis wins, why, what assumption changes follow, what data would change the verdict, ending with 'RECOMMENDATION - HEDGE/HOLD/REDUCE ...'","score":9.1}}
   ],
   "proposed_assumptions": {{
     "revenue_haircut_pct": <number 0-60>,
@@ -418,34 +578,14 @@ ranges, and do not reuse round numbers like 28.5 / 420 / 380 unless they
 genuinely fit. A higher chaos index means a deeper haircut and wider premium.
 """
 
+    model_candidates = _model_candidates(model)
     # Start a span for the LLM Swarm call
-    llm_span = arize_client.start_span(trace_id=trace_id, name=f"LLM Swarm Synthesis ({model})")
+    llm_span = arize_client.start_span(trace_id=trace_id, name=f"LLM Swarm Synthesis ({' -> '.join(model_candidates)})")
 
     try:
-        create_kwargs = dict(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are Aegis_Codex, an institutional crisis-valuation tribunal. You ground every argument in the specific company's fundamentals and the live news provided, never generic boilerplate. Return strict JSON only, no markdown.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.35,
-            max_tokens=900,
-            timeout=LLM_TIMEOUT_SECONDS,
+        parsed, text, selected_model, llm_errors = _run_llm_candidates(
+            client, model_candidates, prompt
         )
-        try:
-            # JSON mode forces parseable output — the 8B model otherwise returns
-            # slightly-off JSON intermittently, which dropped us to the generic
-            # fallback. Retry without it if a model/endpoint rejects the param.
-            response = client.chat.completions.create(
-                response_format={"type": "json_object"}, **create_kwargs
-            )
-        except Exception:
-            response = client.chat.completions.create(**create_kwargs)
-        text = response.choices[0].message.content or ""
-        parsed = _extract_json(text)
         if not parsed:
             arize_client.complete_span(
                 trace_id=trace_id,
@@ -453,7 +593,7 @@ genuinely fit. A higher chaos index means a deeper haircut and wider premium.
                 inputs={"prompt": prompt},
                 outputs={"raw_text": text},
                 status="ERROR",
-                metadata={"error": "JSON parse failure"}
+                metadata={"error": "; ".join(llm_errors) or "JSON parse failure"}
             )
             arize_client.complete_trace(trace_id=trace_id)
             
@@ -466,14 +606,15 @@ genuinely fit. A higher chaos index means a deeper haircut and wider premium.
             fallback_res["telemetry"] = matching_trace
             return fallback_res
             
-        normalized = _normalize(parsed, ticker)
+        normalized = _normalize(parsed, ticker, profile, incident, severity)
         
         arize_client.complete_span(
             trace_id=trace_id,
             span_id=llm_span["span_id"],
             inputs={"prompt": prompt},
             outputs=normalized,
-            status="SUCCESS"
+            status="SUCCESS",
+            metadata={"selected_model": selected_model},
         )
         
         # Log spans for each Swarm Advocate Role

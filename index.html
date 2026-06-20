@@ -1378,28 +1378,79 @@ function loadAndGo(id) {
 // Debates — populated dynamically from tribunal API responses
 const DEBATES = {};
 
+const COMPANY_FALLBACK_PROFILES = {
+  AVGO: {
+    name: 'Broadcom',
+    industry: 'semiconductors and infrastructure software',
+    business: 'AI networking silicon, custom accelerators, merchant switching, wireless/broadband chips, and VMware infrastructure software',
+    drivers: 'hyperscaler AI cluster spending, Ethernet switching upgrades, custom ASIC ramps, VMware subscription conversion, and enterprise infrastructure budgets',
+    risks: 'hyperscaler order concentration, AI networking digestion, VMware integration execution, China/export exposure, and elevated AI-semiconductor valuation expectations',
+    peers: 'NVIDIA, Marvell, AMD, Cisco, Arista, Qualcomm, and enterprise infrastructure software peers'
+  },
+  MSFT: {
+    name: 'Microsoft',
+    industry: 'cloud and enterprise software',
+    business: 'Azure, Microsoft 365, Windows, LinkedIn, Dynamics, gaming, security, and AI copilots',
+    drivers: 'Azure consumption, AI infrastructure utilization, Copilot attach rates, enterprise renewals, and commercial-cloud operating leverage',
+    risks: 'AI capex monetization lag, cloud growth deceleration, regulatory pressure, OpenAI dependency, and enterprise budget pressure',
+    peers: 'Amazon AWS, Google Cloud, Oracle Cloud, Salesforce, and Adobe'
+  },
+  JPM: {
+    name: 'JPMorgan Chase',
+    industry: 'diversified banking',
+    business: 'consumer banking, commercial banking, investment banking, markets, payments, and asset and wealth management',
+    drivers: 'net interest income, credit quality, loan growth, trading volatility, investment-banking fees, and deposit beta',
+    risks: 'credit-cycle deterioration, deposit repricing, capital rules, commercial real estate exposure, and lower rate sensitivity',
+    peers: 'Bank of America, Citi, Wells Fargo, Goldman Sachs, and Morgan Stanley'
+  },
+  NVDA: {
+    name: 'NVIDIA',
+    industry: 'AI semiconductors',
+    business: 'data-center GPUs, networking, CUDA software, gaming GPUs, professional visualization, and automotive AI',
+    drivers: 'hyperscaler AI training and inference capex, Blackwell/Hopper supply, networking attach, sovereign AI, and CUDA platform lock-in',
+    risks: 'export controls, hyperscaler digestion, custom ASIC substitution, gross-margin normalization, and extreme valuation expectations',
+    peers: 'AMD, Broadcom, Marvell, Intel, and custom silicon from Google/Amazon/Microsoft'
+  }
+};
+
+function fallbackProfileFor(ticker, inc) {
+  const key = String(ticker || '').toUpperCase().replace(/\.[A-Z]+$/, '');
+  const known = COMPANY_FALLBACK_PROFILES[key];
+  if (known) return known;
+  const sector = inc?.sector || (inc?.desc || '').match(/([A-Za-z &-]+) exposure/)?.[1] || 'its sector';
+  return {
+    name: ticker,
+    industry: sector,
+    business: `${sector} revenue streams, customer demand, operating margin and capital-market expectations`,
+    drivers: `${sector} demand, order activity, guidance revisions, margin trajectory and recent price action`,
+    risks: `the live Watchtower signal, estimate cuts, margin pressure, customer delays and multiple compression`,
+    peers: `direct ${sector} peers and broader market alternatives`
+  };
+}
+
 function buildLocalTribunalFallback(inc) {
   const ticker = inc?.ticker || 'TARGET';
   const sev = inc?.sev || 'watch';
   const chaos = inc?.chaos || '0.50';
   const desc = inc?.desc || 'Live risk incident detected.';
+  const p = fallbackProfileFor(ticker, inc);
   return [
     {
       role: 'bear',
       label: 'Bear Analyst',
-      text: `${ticker} faces an elevated stress event: ${desc} The Bear case assumes the market reprices the exposure before management can show mitigation. Apply a cautious revenue haircut, margin compression, and risk-premium uplift until the signal cools.`,
+      text: `${ticker} (${p.name}) is a ${p.industry} case, not a generic macro proxy. Its exposed business is ${p.business}. The incident reads through to ${p.drivers}: ${desc} The bear case is that investors pull forward estimate cuts before management can prove orders, margins, or guidance are intact, with the main pressure points being ${p.risks}. Against ${p.peers}, apply a cautious revenue haircut, margin compression, and risk-premium uplift until the signal cools.`,
       score: sev === 'critical' ? 8.0 : 7.3
     },
     {
       role: 'bull',
       label: 'Bull Analyst',
-      text: `${ticker} may absorb the shock better than the headline suggests. Large, liquid franchises can offset macro pressure through pricing power, customer mix, balance-sheet flexibility, and slower-than-feared transmission into fundamentals. The incident deserves stress testing, but not an automatic full impairment case.`,
+      text: `${ticker}'s rebuttal depends on the durability of ${p.business}. If ${p.drivers} remain intact, the Watchtower signal may be a positioning shock rather than a structural impairment. The bull case needs concrete evidence: stable customer demand, resilient margins, no guidance reset, and performance versus ${p.peers}. The incident deserves stress testing, but the full bear scenario should stay probabilistic until there is proof of lost share, cancelled demand, or sustained margin damage.`,
       score: 6.4
     },
     {
       role: 'judge',
       label: 'Black Swan Judge',
-      text: `The tribunal assigns ${ticker} a cautious but not terminal verdict at chaos ${chaos}. The Bear case wins on timing risk, while the Bull case limits the permanent impairment assumption. RECOMMENDATION - HEDGE or reduce exposure modestly, then re-run valuation once live indicators improve.`,
+      text: `The tribunal assigns ${ticker} a cautious but not terminal verdict at chaos ${chaos} because ${desc} touches a business built around ${p.business}. The Bear case wins on timing risk through ${p.risks}, while the Bull case survives only if ${p.drivers} keep supporting forward expectations. Watch guidance, segment commentary, order activity, margins and relative performance versus ${p.peers}. RECOMMENDATION - HEDGE or reduce exposure modestly, then re-run valuation once live indicators improve.`,
       score: 8.5
     }
   ];
