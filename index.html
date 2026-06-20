@@ -482,7 +482,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
         <div class="card-hdr">Expected Tests <span class="tag tag-b" id="cx-test-count" style="font-size:9px">0 cases</span></div>
         <div id="cx-tests" style="color:var(--muted);font-size:11.5px;padding:8px 0">Tests will be generated after tribunal run.</div>
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn" onclick="downloadTask()"><i class="ti ti-download"></i> Download task brief</button>
+          <button class="btn" onclick="downloadTask('brief')"><i class="ti ti-download"></i> Download task brief</button>
           <button class="btn prim" onclick="generatePatch()" id="patch-btn"><i class="ti ti-cpu"></i> Generate Patch Proposal</button>
         </div>
         <div style="margin-top:8px;font-size:10px;color:var(--muted)">
@@ -507,7 +507,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13
         <div class="code-patch" id="patch-content" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;font-size:11px;line-height:2;max-height:220px;overflow-y:auto;font-family:var(--mono)"></div>
         <div style="margin-top:10px;display:flex;gap:8px">
           <button class="btn grn" onclick="reviewAction('approve');switchTab('verdict')"><i class="ti ti-check"></i> Approve & apply</button>
-          <button class="btn" onclick="downloadTask()"><i class="ti ti-download"></i> Download patch</button>
+          <button class="btn" onclick="downloadTask('patch')"><i class="ti ti-download"></i> Download patch</button>
         </div>
       </div>
 
@@ -1847,6 +1847,7 @@ function localPatchLines(inc) {
 }
 
 let patchRunning = false;
+let LAST_PATCH = null;   // holds the most recent generated patch so the download buttons have real data
 async function generatePatch() {
   if (patchRunning) return; patchRunning = true;
   const btn = document.getElementById('patch-btn');
@@ -1891,21 +1892,49 @@ async function generatePatch() {
     }
     const code = data.patch_code || data.llm_task || 'Patch proposal queued. No code was generated because LLM access is unavailable.';
     content.textContent = code;
+    LAST_PATCH = {
+      task_id: String(data.task_id || document.getElementById('cx-task-id')?.textContent || localTaskId()).trim(),
+      ticker: inc.ticker,
+      incident: inc.desc,
+      severity: inc.sev,
+      chaos_index: inc.chaos,
+      assumptions,
+      scenario_patch: data.scenario_patch || null,
+      patch_code: code,
+      llm_task: data.llm_task || null,
+      source: 'api'
+    };
     patchRunning = false; btn.disabled = false;
     btn.innerHTML = '<i class="ti ti-refresh"></i> Regenerate';
     return;
   } catch(e) {
     content.innerHTML = '';
-    if (patchJson && inc) {
-      patchJson.textContent = JSON.stringify({
+    let localScenario = null;
+    if (inc) {
+      localScenario = {
         scenario_id: `local_${inc.ticker.toLowerCase().replace(/[^a-z0-9]/g,'_')}_stress`,
         trigger_event: `${inc.sev || 'watch'}_${inc.ticker}_watchtower_signal`,
         incident: inc.desc,
         assumptions: ACTIVE_ASSUMPTIONS || {},
         human_approval_required: true,
         fallback_reason: e.message || 'LLM patch API unavailable'
-      }, null, 2);
+      };
+      if (patchJson) patchJson.textContent = JSON.stringify(localScenario, null, 2);
     }
+    // Persist a locally-built patch so the download buttons still produce a real
+    // file when the serverless API times out or is unreachable during a live demo.
+    LAST_PATCH = {
+      task_id: String(document.getElementById('cx-task-id')?.textContent || localTaskId()).trim(),
+      ticker: inc?.ticker || 'TARGET',
+      incident: inc?.desc || '',
+      severity: inc?.sev || 'watch',
+      chaos_index: inc?.chaos,
+      assumptions: ACTIVE_ASSUMPTIONS || {},
+      scenario_patch: localScenario,
+      patch_code: localPatchPlain(inc),
+      llm_task: null,
+      source: 'local'
+    };
   }
   localPatchLines(inc).forEach((line, i) => {
     setTimeout(() => {
@@ -2208,7 +2237,124 @@ renderWatchlist(loadWatchlist());
 updateReviewGate(ACTIVE_ASSUMPTIONS);
 loadCachedScan();
 
-function downloadTask() { alert('In production: llm_task.md downloads as Markdown for direct LLM handoff.'); }
+// ==================== PATCH DOWNLOAD ====================
+// Build a date-stamped task id matching the server format (AEGIS_PATCH_YYYYMMDD_001).
+function localTaskId() {
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `AEGIS_PATCH_${ymd}_001`;
+}
+
+// Strip the syntax-highlight HTML out of the local fallback preview so the
+// downloaded file contains clean, paste-ready Python instead of <span> markup.
+function localPatchPlain(inc) {
+  const tmp = document.createElement('div');
+  return localPatchLines(inc).map(line => {
+    tmp.innerHTML = line || '';
+    return tmp.textContent || '';
+  }).join('\n');
+}
+
+function tickerSlug(ticker) {
+  return String(ticker || 'target').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'target';
+}
+
+// Stream a generated string to the browser as a downloaded file (no server round-trip).
+function triggerDownload(filename, text, mime) {
+  const blob = new Blob([text], { type: `${mime || 'text/plain'};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// The markdown task brief. Uses the server-rendered brief when present;
+// otherwise mirrors api/llm_patch.py::_llm_task so the offline file matches production.
+function buildTaskBriefMarkdown(p) {
+  if (p.llm_task) return p.llm_task;
+  const a = p.assumptions || {};
+  const t = String(p.ticker || 'TARGET').toUpperCase();
+  const slug = tickerSlug(p.ticker);
+  const trig = `${p.severity || 'watch'}_${p.ticker || 'target'}_watchtower_signal`.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  const chaos = (p.chaos_index === undefined || p.chaos_index === null || p.chaos_index === '')
+    ? 'n/a' : Number(p.chaos_index).toFixed(2);
+  return `# Aegis Stress Module Patch
+
+## Objective
+Add a dedicated stress scenario for ${t} triggered by \`${trig}\`.
+
+## Live Incident Context
+- Incident: ${p.incident || trig}
+- Severity: ${p.severity || 'watch'}
+- Chaos index: ${chaos}
+
+## Required Model Changes
+- Add a \`${t}StressScenario\` dataclass with event exposure, mitigation timeline, and substitution assumptions.
+- Apply revenue haircut, EBITDA margin compression, WACC premium, and terminal-growth delta from the approved tribunal assumptions.
+- Document why each assumption follows from the Bear/Bull/Judge debate and the live Watchtower signal.
+- Preserve human approval before any generated patch is merged.
+
+## Approved Assumptions
+- Revenue haircut: ${a.revenue_haircut_pct ?? 28.5}%
+- Margin compression: ${a.margin_compression_bps ?? 420} bps
+- WACC premium: ${a.wacc_premium_bps ?? 380} bps
+- Terminal growth delta: ${a.terminal_growth_delta ?? -1.4}%
+
+## Tests Required
+- \`test_stress_${slug}_baseline\`
+- \`test_wacc_regulatory_premium\`
+- \`test_regression_${slug}_golden\`
+`;
+}
+
+// The full LLM-handoff bundle: brief + scenario JSON + generated patch code in one markdown file.
+function buildHandoffMarkdown(p) {
+  const brief = buildTaskBriefMarkdown(p);
+  const json = p.scenario_patch ? JSON.stringify(p.scenario_patch, null, 2) : '{}';
+  const code = p.patch_code || '# No patch code generated.';
+  const source = p.source === 'api' ? 'LLM (live API)' : 'local fallback (offline)';
+  return `${brief}
+---
+
+## Scenario Patch (\`scenario_patch.json\`)
+\`\`\`json
+${json}
+\`\`\`
+
+## Generated Patch Code
+\`\`\`python
+${code}
+\`\`\`
+
+---
+- Task ID: \`${p.task_id || localTaskId()}\`
+- Patch source: ${source}
+- Human approval required before merge: yes
+
+_Generated by Aegis Codex — hand this file to your coding agent to apply the patch._
+`;
+}
+
+// kind='brief' -> the task spec only; kind='patch' (default) -> the full handoff bundle.
+function downloadTask(kind) {
+  kind = kind || 'patch';
+  if (!LAST_PATCH) {
+    alert('Generate a patch proposal first — load an incident, then click "Generate Patch Proposal".');
+    return;
+  }
+  const p = LAST_PATCH;
+  const slug = tickerSlug(p.ticker);
+  if (kind === 'brief') {
+    triggerDownload(`${slug}_llm_task.md`, buildTaskBriefMarkdown(p), 'text/markdown');
+  } else {
+    triggerDownload(`${p.task_id || 'aegis_patch'}_${slug}.md`, buildHandoffMarkdown(p), 'text/markdown');
+  }
+}
+
 function downloadMemo() { alert('In production: IC memo downloads as PDF via Markdown → PDF pipeline.'); }
 </script>
 </body>
