@@ -1377,6 +1377,21 @@ function loadAndGo(id) {
 
 // Debates — populated dynamically from tribunal API responses
 const DEBATES = {};
+let TRIBUNAL_SOURCES = [];   // live Tavily sources for the active tribunal run
+
+// Mirror of backend _stress_from_signal: stress scales with the live signal so
+// the offline fallback proposes sensible, chaos-calibrated assumptions.
+function localStressAssumptions(chaos, sev) {
+  chaos = Math.max(0, Math.min(1, parseFloat(chaos) || 0.5));
+  sev = (sev || 'watch').toLowerCase();
+  const floor = ({ critical: 26, elevated: 19, warning: 19, watch: 13 })[sev] ?? 16;
+  return {
+    revenue_haircut_pct: +(floor + chaos * 20).toFixed(1),
+    margin_compression_bps: Math.round(200 + chaos * 380),
+    wacc_premium_bps: Math.round(190 + chaos * 400),
+    terminal_growth_delta: +(-(0.5 + chaos * 1.8)).toFixed(1)
+  };
+}
 
 const COMPANY_FALLBACK_PROFILES = {
   AVGO: {
@@ -1430,30 +1445,52 @@ function fallbackProfileFor(ticker, inc) {
 
 function buildLocalTribunalFallback(inc) {
   const ticker = inc?.ticker || 'TARGET';
-  const sev = inc?.sev || 'watch';
-  const chaos = inc?.chaos || '0.50';
+  const sev = (inc?.sev || 'watch').toLowerCase();
+  const chaos = parseFloat(inc?.chaos) || 0.5;
   const desc = inc?.desc || 'Live risk incident detected.';
   const p = fallbackProfileFor(ticker, inc);
-  return [
-    {
-      role: 'bear',
-      label: 'Bear Analyst',
-      text: `${ticker} (${p.name}) is a ${p.industry} case, not a generic macro proxy. Its exposed business is ${p.business}. The incident reads through to ${p.drivers}: ${desc} The bear case is that investors pull forward estimate cuts before management can prove orders, margins, or guidance are intact, with the main pressure points being ${p.risks}. Against ${p.peers}, apply a cautious revenue haircut, margin compression, and risk-premium uplift until the signal cools.`,
-      score: sev === 'critical' ? 8.0 : 7.3
-    },
-    {
-      role: 'bull',
-      label: 'Bull Analyst',
-      text: `${ticker}'s rebuttal depends on the durability of ${p.business}. If ${p.drivers} remain intact, the Watchtower signal may be a positioning shock rather than a structural impairment. The bull case needs concrete evidence: stable customer demand, resilient margins, no guidance reset, and performance versus ${p.peers}. The incident deserves stress testing, but the full bear scenario should stay probabilistic until there is proof of lost share, cancelled demand, or sustained margin damage.`,
-      score: 6.4
-    },
-    {
-      role: 'judge',
-      label: 'Black Swan Judge',
-      text: `The tribunal assigns ${ticker} a cautious but not terminal verdict at chaos ${chaos} because ${desc} touches a business built around ${p.business}. The Bear case wins on timing risk through ${p.risks}, while the Bull case survives only if ${p.drivers} keep supporting forward expectations. Watch guidance, segment commentary, order activity, margins and relative performance versus ${p.peers}. RECOMMENDATION - HEDGE or reduce exposure modestly, then re-run valuation once live indicators improve.`,
-      score: 8.5
-    }
+  const cap = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+  const riskTokens = String(p.risks).split(/,| and /).map(s => s.trim()).filter(Boolean).slice(0, 3);
+  while (riskTokens.length < 3) riskTokens.push('multiple compression as expectations reset');
+
+  const risks = riskTokens.map((tok, i) => ({
+    title: cap(tok).slice(0, 80),
+    mechanism: `The incident reads through to ${p.drivers}; ${tok} pressures ${ticker}'s forward revenue or margin over the next 1-4 quarters before management can prove resilience.`,
+    severity: (sev === 'critical' || i === 0) ? 'high' : 'medium',
+    horizon: i < 2 ? 'near' : 'structural',
+    evidence: `Watch ${ticker} guidance and segment order commentary versus ${p.peers}.`
+  }));
+  const rebuttals = risks.map((r, i) => ({
+    addresses: r.title,
+    type: i % 2 === 0 ? 'mitigant' : 'bright_side',
+    counter: `${ticker}'s position in ${p.business} can absorb this if ${p.drivers} stay intact; likely a positioning shock rather than impairment until lost share or cancelled demand is confirmed.`
+  }));
+  const scenarios = [
+    { name: 'Bear', probability: sev === 'critical' ? 0.35 : 0.30, outcome: `Estimates and multiple reset as ${riskTokens[0].toLowerCase()} plays out.` },
+    { name: 'Base', probability: 0.45, outcome: `${ticker} absorbs the shock with a temporary haircut; ${p.drivers} stabilize.` },
+    { name: 'Bull', probability: sev === 'critical' ? 0.20 : 0.25, outcome: `Signal proves to be positioning noise; ${ticker} re-rates with ${p.peers}.` }
   ];
+  const bearScore = sev === 'critical' ? 8.0 : 7.3, bullScore = 6.3;
+  const action = (chaos >= 0.7 || sev === 'critical') ? 'HEDGE' : (chaos >= 0.5 ? 'REDUCE' : 'HOLD');
+  const recommendation = {
+    action,
+    rationale: `At chaos ${chaos.toFixed(2)} and ${sev} severity the upheld risks justify a ${action.toLowerCase()} stance until live indicators confirm whether this is cyclic noise or an expectation reset.`,
+    monitor: [`${ticker} forward guidance and segment order commentary`, `Relative price action and estimate revisions versus ${p.peers}`],
+    invalidation: `Confirmed stable demand, intact margins and no guidance cut would flip the call toward HOLD/ACCUMULATE.`
+  };
+
+  const bear = { role: 'bear', label: 'Bear Analyst', score: bearScore,
+    thesis: `${ticker} (${p.name}) is a ${p.industry} case, not a generic macro proxy; the incident hits a business built on ${p.business}.`, risks };
+  bear.text = `${bear.thesis} ` + risks.map((r, i) => `Risk ${i + 1} — ${r.title}: ${r.mechanism}`).join(' ');
+  const bull = { role: 'bull', label: 'Bull Analyst', score: bullScore,
+    thesis: `${ticker}'s rebuttal rests on the durability of ${p.business}; the bear haircut should stay probabilistic without proof of structural damage.`,
+    rebuttals, asymmetry: `If ${p.drivers} hold, normalized earnings power versus ${p.peers} is unchanged and the selloff overstates the structural impact.` };
+  bull.text = `${bull.thesis} ` + rebuttals.map(rb => `${rb.type === 'bright_side' ? 'Offset' : 'Mitigant'} on ${rb.addresses}: ${rb.counter}`).join(' ') + ` Asymmetry: ${bull.asymmetry}`;
+  const judge = { role: 'judge', label: 'Black Swan Judge', score: 8.6,
+    verdict: `The tribunal gives ${ticker} a cautious but non-terminal verdict at chaos ${chaos.toFixed(2)}: the Bear wins the next-quarter timing argument through ${riskTokens[0].toLowerCase()}, while the Bull case survives only if ${p.drivers} keep supporting forward expectations.`,
+    key_risks_upheld: [risks[0].title, risks[1].title], scenarios, recommendation };
+  judge.text = `${judge.verdict} RECOMMENDATION - ${action}: ${recommendation.rationale}`;
+  return [bear, bull, judge];
 }
 
 let tribunalRunning = false;
@@ -1486,6 +1523,7 @@ async function launchTribunal() {
     DEBATES[ACTIVE] = data.rounds;
     msgs = data.rounds;
     ACTIVE_ASSUMPTIONS = data.proposed_assumptions || ACTIVE_ASSUMPTIONS;
+    TRIBUNAL_SOURCES = Array.isArray(data.sources) ? data.sources : [];
     updateReviewGate(ACTIVE_ASSUMPTIONS);
     document.getElementById('tri-bear-score').textContent = Number(data.bear_score || msgs[0].score || 0).toFixed(1);
     document.getElementById('tri-bull-score').textContent = Number(data.bull_score || msgs[1].score || 0).toFixed(1);
@@ -1495,6 +1533,9 @@ async function launchTribunal() {
   } catch(e) {
     msgs = DEBATES[ACTIVE] || buildLocalTribunalFallback(inc);
     DEBATES[ACTIVE] = msgs;
+    TRIBUNAL_SOURCES = [];
+    if (!ACTIVE_ASSUMPTIONS) ACTIVE_ASSUMPTIONS = localStressAssumptions(inc.chaos, inc.sev);
+    updateReviewGate(ACTIVE_ASSUMPTIONS);
   }
 
   if (!msgs || !msgs.length) {
@@ -1517,10 +1558,16 @@ async function launchTribunal() {
 
       const div = document.createElement('div');
       div.className = `dbm dbm-${msg.role}`;
-      div.innerHTML = `<div class="dbm-role">${msg.label}</div><div id="dbm-text-${i}"></div>`;
+      const scoreBadge = (msg.score != null)
+        ? `<span style="float:right;font-size:9px;letter-spacing:1px;opacity:0.85">conviction ${Number(msg.score).toFixed(1)}/10</span>`
+        : '';
+      div.innerHTML = `<div class="dbm-role">${esc(msg.label)}${scoreBadge}</div><div id="dbm-text-${i}"></div><div id="dbm-detail-${i}" style="margin-top:6px"></div>`;
       stream.appendChild(div); stream.scrollTop = stream.scrollHeight;
 
-      typewrite(`dbm-text-${i}`, msg.text, () => {
+      typewrite(`dbm-text-${i}`, roundHeadline(msg), () => {
+        const detailEl = document.getElementById(`dbm-detail-${i}`);
+        if (detailEl) detailEl.innerHTML = roundDetailHtml(msg);
+        stream.scrollTop = stream.scrollHeight;
         if (i === msgs.length - 1) {
           tribunalRunning = false;
           btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Re-run Tribunal';
@@ -1540,10 +1587,93 @@ async function launchTribunal() {
 
 function typewrite(id, text, cb) {
   const el = document.getElementById(id); let i = 0;
+  text = String(text || '');
+  if (!text) { if (cb) cb(); return; }
   const iv = setInterval(() => {
     el.textContent += text[i++];
     if (i >= text.length) { clearInterval(iv); if (cb) cb(); }
   }, 16);
+}
+
+// ---- Tribunal rich-output renderers (degrade to plain text for old payloads) ----
+function roundHeadline(msg) {
+  const h = (msg.role === 'judge') ? (msg.verdict || msg.text) : (msg.thesis || msg.text);
+  return String(h || '').trim();
+}
+
+function sevTagClass(sev) {
+  sev = String(sev || '').toLowerCase();
+  return sev === 'high' ? 'tag-r' : sev === 'low' ? 'tag-b' : 'tag-a';
+}
+
+function actionColor(a) {
+  a = String(a || '').toUpperCase();
+  return a === 'HEDGE' ? 'var(--red)' : a === 'REDUCE' ? 'var(--amber)'
+    : a === 'ACCUMULATE' ? 'var(--teal)' : 'var(--blue)';
+}
+
+function recommendationHtml(rec) {
+  if (!rec || !rec.action) return '';
+  const c = actionColor(rec.action);
+  const monitor = Array.isArray(rec.monitor) && rec.monitor.length
+    ? `<div style="font-size:10.5px;color:var(--muted);margin-top:4px"><span style="color:var(--text)">Monitor:</span> ${rec.monitor.map(esc).join(' · ')}</div>` : '';
+  const inval = rec.invalidation
+    ? `<div style="font-size:10.5px;color:var(--muted);margin-top:2px"><span style="color:var(--text)">Invalidation:</span> ${esc(rec.invalidation)}</div>` : '';
+  return `<div style="margin-top:8px;padding:8px 10px;background:rgba(0,0,0,0.18);border-radius:var(--radius);border-left:2px solid ${c}">
+    <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:${c};font-weight:700;margin-bottom:3px">Recommendation · ${esc(rec.action)}</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.5">${esc(rec.rationale || '')}</div>${monitor}${inval}</div>`;
+}
+
+function roundDetailHtml(msg) {
+  if (msg.role === 'bear' && Array.isArray(msg.risks) && msg.risks.length) {
+    return msg.risks.map(r => `
+      <div style="display:flex;gap:8px;align-items:baseline;padding:5px 0;border-top:1px solid var(--border)">
+        <span class="tag ${sevTagClass(r.severity)}" style="font-size:8px;flex-shrink:0">${esc(r.severity)}</span>
+        <div style="flex:1">
+          <span style="color:var(--text);font-weight:600;font-size:11.5px">${esc(r.title)}</span>
+          <span style="color:var(--muted);font-size:9px;margin-left:6px">${esc(r.horizon)}-term</span>
+          <div style="color:var(--muted);font-size:11px;line-height:1.5;margin-top:2px">${esc(r.mechanism)}</div>
+          ${r.evidence ? `<div style="color:var(--muted);font-size:10px;margin-top:2px;opacity:0.85"><i class="ti ti-eye" style="font-size:10px"></i> ${esc(r.evidence)}</div>` : ''}
+        </div>
+      </div>`).join('');
+  }
+  if (msg.role === 'bull' && Array.isArray(msg.rebuttals) && msg.rebuttals.length) {
+    const reb = msg.rebuttals.map(rb => `
+      <div style="display:flex;gap:8px;align-items:baseline;padding:5px 0;border-top:1px solid var(--border)">
+        <span class="tag ${rb.type === 'bright_side' ? 'tag-g' : 'tag-b'}" style="font-size:8px;flex-shrink:0">${rb.type === 'bright_side' ? 'upside' : 'mitigant'}</span>
+        <div style="flex:1">
+          <span style="color:var(--muted);font-size:10px">counters &ldquo;${esc(rb.addresses)}&rdquo;</span>
+          <div style="color:var(--text);font-size:11px;line-height:1.5;margin-top:2px">${esc(rb.counter)}</div>
+        </div>
+      </div>`).join('');
+    const asym = msg.asymmetry
+      ? `<div style="margin-top:7px;font-size:11px;color:var(--teal);line-height:1.5"><i class="ti ti-arrow-up-right" style="font-size:11px"></i> <span style="font-weight:600">Asymmetry:</span> <span style="color:var(--muted)">${esc(msg.asymmetry)}</span></div>` : '';
+    return reb + asym;
+  }
+  if (msg.role === 'judge') {
+    let html = '';
+    if (Array.isArray(msg.scenarios) && msg.scenarios.length) {
+      html += '<div style="margin-top:2px">' + msg.scenarios.map((s, idx) => {
+        const c = idx === 0 ? 'var(--red)' : idx === 1 ? 'var(--amber)' : 'var(--teal)';
+        const pct = Math.round((Number(s.probability) || 0) * 100);
+        return `<div style="margin:5px 0">
+          <div style="font-size:10px"><span style="color:${c};font-weight:600">${esc(s.name)} · ${pct}%</span></div>
+          <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin:2px 0"><div style="height:100%;width:${pct}%;background:${c}"></div></div>
+          <div style="font-size:10.5px;color:var(--muted);line-height:1.45">${esc(s.outcome)}</div>
+        </div>`;
+      }).join('') + '</div>';
+    }
+    html += recommendationHtml(msg.recommendation);
+    return html;
+  }
+  return '';
+}
+
+function sourcesHtml(max) {
+  if (!Array.isArray(TRIBUNAL_SOURCES) || !TRIBUNAL_SOURCES.length) return '';
+  return TRIBUNAL_SOURCES.slice(0, max || 4).map(s =>
+    `<a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><i class="ti ti-external-link" style="font-size:10px"></i> ${esc(s.title)}</a>`
+  ).join('');
 }
 
 function esc(s) {
@@ -1564,10 +1694,12 @@ function verdictWhyHtml(inc, msgs) {
   const bull = getRound(msgs, 'bull');
   const judge = getRound(msgs, 'judge');
   const a = ACTIVE_ASSUMPTIONS || {};
+  const rec = judge.recommendation || {};
+  const headline = m => m.thesis || m.verdict || shortText(m.text, 360);
   const rows = [
-    ['Bear pressure', bear.text, 'var(--red)'],
-    ['Bull offset', bull.text, 'var(--teal)'],
-    ['Judge synthesis', judge.text, 'var(--amber)'],
+    ['Bear case', headline(bear), 'var(--red)'],
+    ['Bull case', headline(bull), 'var(--teal)'],
+    ['Judge synthesis', judge.verdict || shortText(judge.text, 360), 'var(--amber)'],
   ];
   const assumptions = [
     `Revenue haircut ${Number(a.revenue_haircut_pct || 0).toFixed(1)}%`,
@@ -1575,10 +1707,21 @@ function verdictWhyHtml(inc, msgs) {
     `WACC premium ${Math.round(Number(a.wacc_premium_bps || 0))} bps`,
     `Terminal growth ${Number(a.terminal_growth_delta || 0).toFixed(1)} pts`,
   ];
+  const recBanner = rec.action ? `
+    <div style="background:rgba(0,0,0,0.18);border:1px solid var(--border);border-left:3px solid ${actionColor(rec.action)};border-radius:var(--radius);padding:10px 12px;margin-bottom:10px">
+      <div style="color:${actionColor(rec.action)};font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;margin-bottom:3px">Recommendation — ${esc(rec.action)}</div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.6">${esc(rec.rationale || '')}</div>
+      ${rec.invalidation ? `<div style="color:var(--muted);font-size:11px;margin-top:4px"><span style="color:var(--text)">Invalidation:</span> ${esc(rec.invalidation)}</div>` : ''}
+    </div>` : '';
+  const scen = Array.isArray(judge.scenarios) && judge.scenarios.length
+    ? `<div style="margin-top:10px;color:var(--muted);font-size:11px">Scenario weighting: ${judge.scenarios.map(s => `<strong style="color:var(--text)">${esc(s.name)} ${Math.round((Number(s.probability) || 0) * 100)}%</strong>`).join(' · ')}</div>` : '';
+  const src = sourcesHtml(3);
+  const srcBlock = src ? `<div style="margin-top:10px"><div style="color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Grounded in live sources</div>${src}</div>` : '';
   return `
     <div style="color:var(--text);font-size:13px;line-height:1.8;margin-bottom:10px">
       ${esc(inc.ticker)} is flagged as <strong>${esc(inc.sev)}</strong> because ${esc(inc.desc)}
     </div>
+    ${recBanner}
     <div style="display:flex;flex-direction:column;gap:8px">
       ${rows.map(([label, text, color]) => `
         <div style="background:var(--bg3);border:1px solid var(--border);border-left:2px solid ${color};border-radius:var(--radius);padding:9px 10px">
@@ -1587,9 +1730,11 @@ function verdictWhyHtml(inc, msgs) {
         </div>
       `).join('')}
     </div>
+    ${scen}
     <div style="margin-top:10px;color:var(--muted);font-size:11px;line-height:1.8">
       Model impact: ${assumptions.map(esc).join(' · ')}. These values explain the valuation stress, not just the final label.
     </div>
+    ${srcBlock}
   `;
 }
 
@@ -1609,44 +1754,59 @@ function updateVerdictFromTribunal(inc, msgs, data) {
   // Stamp
   const stamp = document.getElementById('vstamp');
   if (stamp) {
-    const judgeText = judgeMsg ? judgeMsg.text.toUpperCase() : '';
-    if (judgeText.includes('HEDGE')) {
-      stamp.textContent = 'HEDGE RECOMMENDED'; stamp.style.color = 'var(--red)'; stamp.style.borderColor = 'var(--red-border)';
-    } else if (judgeText.includes('HOLD')) {
-      stamp.textContent = 'HOLD — MONITOR'; stamp.style.color = 'var(--amber)'; stamp.style.borderColor = 'var(--amber-border)';
-    } else if (judgeText.includes('REDUCE') || judgeText.includes('PARTIAL')) {
-      stamp.textContent = 'PARTIAL HEDGE'; stamp.style.color = 'var(--amber)'; stamp.style.borderColor = 'var(--amber-border)';
-    } else {
-      stamp.textContent = 'REVIEW REQUIRED'; stamp.style.color = 'var(--blue)'; stamp.style.borderColor = 'var(--blue-border)';
+    const rec = (judgeMsg && judgeMsg.recommendation) || {};
+    const action = String(rec.action || '').toUpperCase();
+    const map = {
+      HEDGE:      ['HEDGE RECOMMENDED', 'var(--red)',   'var(--red-border)'],
+      REDUCE:     ['REDUCE EXPOSURE',   'var(--amber)', 'var(--amber-border)'],
+      HOLD:       ['HOLD — MONITOR',    'var(--amber)', 'var(--amber-border)'],
+      ACCUMULATE: ['ACCUMULATE',        'var(--teal)',  'var(--teal-border)'],
+    };
+    let cfg = map[action];
+    if (!cfg) {  // legacy payloads without a structured recommendation
+      const t = judgeMsg ? String(judgeMsg.text || '').toUpperCase() : '';
+      cfg = t.includes('HEDGE') ? map.HEDGE : t.includes('REDUCE') ? map.REDUCE
+          : t.includes('HOLD') ? map.HOLD : ['REVIEW REQUIRED', 'var(--blue)', 'var(--blue-border)'];
     }
+    stamp.textContent = cfg[0]; stamp.style.color = cfg[1]; stamp.style.borderColor = cfg[2];
   }
 
   // Top risks — extract from judge text
   const risksEl = document.getElementById('verdict-risks');
   if (risksEl) {
     const bearMsg = getRound(msgs, 'bear');
-    const bullMsg = getRound(msgs, 'bull');
-    const a = ACTIVE_ASSUMPTIONS || {};
-    const riskSentences = [
-      shortText(bearMsg.text || inc.desc, 160),
-      `Assumption stress: revenue ${Number(a.revenue_haircut_pct || 0).toFixed(1)}%, WACC +${Math.round(Number(a.wacc_premium_bps || 0))}bps.`,
-      shortText(`Offset to monitor: ${bullMsg.text || 'bull case unavailable'}`, 160),
-    ];
-    const colors = ['tag-r', 'tag-r', 'tag-a'];
-    risksEl.innerHTML = riskSentences.map((s, i) =>
-      `<div style="display:flex;gap:10px;align-items:baseline"><span class="tag ${colors[i] || 'tag-b'}">R${i+1}</span><span style="color:var(--muted)">${esc(s)}</span></div>`
-    ).join('');
+    if (Array.isArray(bearMsg.risks) && bearMsg.risks.length) {
+      risksEl.innerHTML = bearMsg.risks.map((r, i) =>
+        `<div style="display:flex;gap:10px;align-items:baseline">
+          <span class="tag ${sevTagClass(r.severity)}">R${i + 1}</span>
+          <span style="color:var(--muted)"><strong style="color:var(--text)">${esc(r.title)}</strong> — ${esc(shortText(r.mechanism, 170))}</span>
+        </div>`
+      ).join('');
+    } else {
+      const a = ACTIVE_ASSUMPTIONS || {};
+      const bullMsg = getRound(msgs, 'bull');
+      const riskSentences = [
+        shortText(bearMsg.text || inc.desc, 160),
+        `Assumption stress: revenue ${Number(a.revenue_haircut_pct || 0).toFixed(1)}%, WACC +${Math.round(Number(a.wacc_premium_bps || 0))}bps.`,
+        shortText(`Offset to monitor: ${bullMsg.text || 'bull case unavailable'}`, 160),
+      ];
+      const colors = ['tag-r', 'tag-r', 'tag-a'];
+      risksEl.innerHTML = riskSentences.map((s, i) =>
+        `<div style="display:flex;gap:10px;align-items:baseline"><span class="tag ${colors[i] || 'tag-b'}">R${i + 1}</span><span style="color:var(--muted)">${esc(s)}</span></div>`
+      ).join('');
+    }
   }
 
   // Audit trail
   const auditEl = document.getElementById('verdict-audit');
   if (auditEl) {
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const srcCount = (TRIBUNAL_SOURCES || []).length;
     auditEl.innerHTML = `
-      <div><i class="ti ti-world" style="font-size:11px"></i> Tavily: live news search — ${inc.ticker} risk keywords</div>
-      <div><i class="ti ti-activity" style="font-size:11px"></i> Arize: tribunal_run_${ts.replace(/[-: ]/g,'').slice(0,14)} → ${msgs.length} rounds</div>
+      <div><i class="ti ti-world" style="font-size:11px"></i> Tavily: live web search — ${srcCount ? srcCount + ' sources grounded' : inc.ticker + ' risk keywords'}</div>
+      <div><i class="ti ti-activity" style="font-size:11px"></i> Arize: tribunal_run_${ts.replace(/[-: ]/g,'').slice(0,14)} → ${msgs.length} rounds, 2-stage swarm</div>
       <div><i class="ti ti-calculator" style="font-size:11px"></i> Chaos index: ${inc.chaos} · Rev. at risk: ${inc.rev} · Severity: ${inc.sev}</div>
-      <div><i class="ti ti-robot" style="font-size:11px"></i> Fracture Swarm: Bear / Bull / Black Swan Judge — Nvidia NIM</div>
+      <div><i class="ti ti-robot" style="font-size:11px"></i> Swarm: Bear+Bull debate → Black Swan Judge — Nvidia NIM</div>
     `;
   }
 
@@ -2355,7 +2515,73 @@ function downloadTask(kind) {
   }
 }
 
-function downloadMemo() { alert('In production: IC memo downloads as PDF via Markdown → PDF pipeline.'); }
+// Build a full IC memo (Markdown) from the active tribunal run.
+function buildICMemoMarkdown(inc, rounds, a, sources) {
+  const bear = getRound(rounds, 'bear'), bull = getRound(rounds, 'bull'), judge = getRound(rounds, 'judge');
+  const rec = judge.recommendation || {};
+  const date = new Date().toISOString().slice(0, 10);
+  const L = [];
+  L.push(`# Investment Committee Memo — ${inc.ticker}`, '');
+  L.push(`**Date:** ${date}  |  **Severity:** ${inc.sev}  |  **Chaos index:** ${inc.chaos}  |  **Revenue at risk:** ${inc.rev || 'n/a'}`, '');
+  L.push(`**Incident:** ${inc.desc}`, '');
+  if (rec.action) {
+    L.push(`## Recommendation — ${rec.action}`);
+    if (rec.rationale) L.push(rec.rationale);
+    if (rec.invalidation) L.push('', `_Invalidation:_ ${rec.invalidation}`);
+    L.push('');
+  }
+  if (judge.verdict) L.push('## Executive Verdict', judge.verdict, '');
+  L.push(`## Bear Case (conviction ${bear.score ?? '—'}/10)`);
+  if (bear.thesis) L.push(bear.thesis);
+  (bear.risks || []).forEach((r, i) => {
+    L.push('', `**R${i + 1}. ${r.title}** _(${r.severity}/${r.horizon}-term)_`, r.mechanism);
+    if (r.evidence) L.push(`_Watch:_ ${r.evidence}`);
+  });
+  L.push('');
+  L.push(`## Bull Case (conviction ${bull.score ?? '—'}/10)`);
+  if (bull.thesis) L.push(bull.thesis);
+  (bull.rebuttals || []).forEach(rb => {
+    L.push('', `**Counters “${rb.addresses}”** _(${rb.type})_`, rb.counter);
+  });
+  if (bull.asymmetry) L.push('', `_Asymmetry:_ ${bull.asymmetry}`);
+  L.push('');
+  if ((judge.scenarios || []).length) {
+    L.push('## Probability-Weighted Scenarios', '', '| Scenario | Probability | Outcome |', '|---|---|---|');
+    judge.scenarios.forEach(s => L.push(`| ${s.name} | ${Math.round((Number(s.probability) || 0) * 100)}% | ${s.outcome} |`));
+    L.push('');
+  }
+  if ((rec.monitor || []).length) {
+    L.push('## Monitoring Triggers');
+    rec.monitor.forEach(m => L.push(`- ${m}`));
+    L.push('');
+  }
+  L.push('## Proposed Stress Assumptions (human review required)', '', '| Input | Value |', '|---|---|');
+  L.push(`| Revenue haircut | ${Number(a.revenue_haircut_pct || 0).toFixed(1)}% |`);
+  L.push(`| Margin compression | ${Math.round(Number(a.margin_compression_bps || 0))} bps |`);
+  L.push(`| WACC premium | +${Math.round(Number(a.wacc_premium_bps || 0))} bps |`);
+  L.push(`| Terminal growth delta | ${Number(a.terminal_growth_delta || 0).toFixed(1)} pts |`, '');
+  if ((sources || []).length) {
+    L.push('## Sources (live)');
+    sources.forEach(s => L.push(`- [${s.title}](${s.url})`));
+    L.push('');
+  }
+  L.push('---');
+  L.push('_Generated by Aegis Codex adversarial tribunal (Bear / Bull / Black Swan Judge), grounded in live Tavily search. Stress assumptions are proposals for Investment Committee approval, not executed trades._');
+  return L.join('\n');
+}
+
+function downloadMemo() {
+  const inc = INCIDENTS[ACTIVE];
+  const rounds = DEBATES[ACTIVE];
+  if (!inc || !Array.isArray(rounds) || !rounds.length) {
+    alert('Run the Tribunal first — load an incident and launch the tribunal to generate the IC memo.');
+    return;
+  }
+  const md = buildICMemoMarkdown(inc, rounds, ACTIVE_ASSUMPTIONS || {}, TRIBUNAL_SOURCES || []);
+  const slug = String(inc.ticker || 'ticker').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'ticker';
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  triggerDownload(`${slug}_IC_memo_${date}.md`, md, 'text/markdown');
+}
 </script>
 </body>
 </html>
