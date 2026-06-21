@@ -130,29 +130,34 @@ class DevRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 def _prewarm() -> None:
-    """Fire a tiny Kimi K2.6 call in the background so the first real tribunal of
-    the demo hits a warm NIM instance (~7s) instead of a cold start (~19s)."""
-    try:
-        import os
-        from openai import OpenAI
+    """Fire tiny calls to the strong models (Kimi, MiniMax) in the background so
+    the first real tribunal of the demo hits warm NIM instances (~7s) instead of
+    a cold start (~19s)."""
+    import os
+    from openai import OpenAI
 
-        key = os.environ.get("KIMI_API_KEY")
+    def _strip(url: str) -> str:
+        url = (url or "https://integrate.api.nvidia.com/v1").strip().rstrip("/")
+        for suffix in ("/chat/completions", "/completions"):
+            if url.endswith(suffix):
+                url = url[: -len(suffix)]
+        return url
+
+    models = [
+        ("Kimi K2.6", os.environ.get("KIMI_API_KEY"),
+         os.environ.get("KIMI_BASE_URL"), os.environ.get("KIMI_MODEL", "moonshotai/kimi-k2.6")),
+        ("MiniMax M3", os.environ.get("MINIMAX_API_KEY"),
+         os.environ.get("MINIMAX_BASE_URL"), os.environ.get("MINIMAX_MODEL", "minimaxai/minimax-m3")),
+    ]
+    for label, key, base_url, model in models:
         if not key:
-            return
-        client = OpenAI(
-            api_key=key,
-            base_url=os.environ.get("KIMI_BASE_URL", "https://integrate.api.nvidia.com/v1"),
-            timeout=40,
-            max_retries=0,
-        )
-        client.chat.completions.create(
-            model=os.environ.get("KIMI_MODEL", "moonshotai/kimi-k2.6"),
-            messages=[{"role": "user", "content": "ping"}],
-            max_tokens=1,
-        )
-        print(" Kimi K2.6 pre-warmed.")
-    except Exception:
-        pass
+            continue
+        try:
+            OpenAI(api_key=key, base_url=_strip(base_url), timeout=40, max_retries=0).chat.completions.create(
+                model=model, messages=[{"role": "user", "content": "ping"}], max_tokens=1)
+            print(f" {label} pre-warmed.")
+        except Exception:
+            pass
 
 
 def run(port=3000):

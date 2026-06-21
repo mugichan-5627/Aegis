@@ -42,15 +42,44 @@ KIMI_API_KEY = os.environ.get("KIMI_API_KEY")
 KIMI_MODEL = os.environ.get("KIMI_MODEL", "moonshotai/kimi-k2.6")
 KIMI_BASE_URL = os.environ.get("KIMI_BASE_URL", NVIDIA_BASE_URL)
 
+# MiniMax M3 (also via NVIDIA NIM) — a second strong "unified" model on its own
+# key, so a throttled Kimi key still leaves a reasoning model before the
+# deterministic fallback. _norm_base_url tolerates a pasted .../chat/completions.
+MINIMAX_API_KEY = os.environ.get("MINIMAX_API_KEY")
+MINIMAX_MODEL = os.environ.get("MINIMAX_MODEL", "minimaxai/minimax-m3")
+MINIMAX_BASE_URL = os.environ.get("MINIMAX_BASE_URL", NVIDIA_BASE_URL)
+
 TAVILY_TIMEOUT_SECONDS = 6.0
-# Kimi is a 1T-param model: a full unified debate runs ~12-15s warm, ~25-30s cold.
-# llama's two-stage fallback stays tight. Budgets are sized so the high-quality
-# Kimi call always completes (vercel.json maxDuration raised to match).
-UNIFIED_TIMEOUT_SECONDS = 32.0      # Kimi single unified debate call
-STAGE_TIMEOUT_SECONDS = 13.0        # llama two-stage fallback, per call
-WALL_BUDGET_SECONDS = 46.0          # hard ceiling on all LLM work (vercel maxDuration 60)
-PROVIDER_MIN_SECONDS = 12.0         # don't start another provider with less than this left
+# Kimi/MiniMax are large models: a full unified debate runs ~12-18s warm, ~25-30s
+# cold. The per-call cap is sized so that if the first strong model is slow, a
+# SECOND strong model (separate key) still gets a real attempt before the
+# deterministic fallback — the user's requirement that a model always reasons.
+UNIFIED_TIMEOUT_SECONDS = 28.0      # one strong-model unified debate call
+STAGE_TIMEOUT_SECONDS = 11.0        # llama two-stage fallback, per call (8B is fast)
+WALL_BUDGET_SECONDS = 52.0          # hard ceiling on all LLM work (vercel maxDuration 60)
+# Always keep this much budget for the fast, reliable llama net so a real model
+# carries the reasoning even when the strong models are slow/throttled — never the
+# deterministic fallback unless EVERY provider (incl. llama) fails. Sized for
+# llama's full two-stage (Stage 1 + a real Judge call), not a synthesized judge.
+# A throttled NIM call HANGS rather than fast-failing; the hard deadline abandons
+# it at its window, so a slow strong model costs only ~its window, then llama runs.
+LLAMA_RESERVE_SECONDS = 17.0
+MIN_UNIFIED_SECONDS = 8.0           # skip a strong model if less than this is left for it
 JUDGE_MIN_SECONDS = 5.0
+
+# Shared executor for HARD deadlines. We deliberately do NOT use
+# `with ThreadPoolExecutor() as ex:` for timed calls — its __exit__ runs
+# shutdown(wait=True), which blocks until an abandoned (timed-out) worker
+# finishes, defeating the deadline (this is what let a slow Kimi call run ~60s).
+# A persistent pool lets us abandon a hung call and move on; it frees in the
+# background when the underlying request finally returns.
+_DEADLINE_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=32)
+
+
+def _with_deadline(fn, timeout):
+    """Run fn() with a hard wall-clock deadline. Raises TimeoutError (or fn's own
+    exception) if it doesn't finish in time, WITHOUT waiting for the worker."""
+    return _DEADLINE_POOL.submit(fn).result(timeout=timeout)
 
 DEFAULT_ASSUMPTIONS = {
     "revenue_haircut_pct": 28.5,
@@ -141,8 +170,7 @@ def _company_profile(ticker: str) -> dict:
     # 1. Canonical identity via Yahoo search (time-boxed so it can't eat budget).
     if not (profile.get("name") and profile.get("industry")):
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
-                match = _ex.submit(_best_quote, normalized).result(timeout=4.5)
+            match = _with_deadline(lambda: _best_quote(normalized), 4.5)
             if match:
                 profile.setdefault("symbol", str(match.get("symbol") or normalized))
                 profile["name"] = profile.get("name") or match.get("longname") or match.get("shortname")
@@ -158,8 +186,7 @@ def _company_profile(ticker: str) -> dict:
         import yfinance as yf
 
         symbol = profile.get("symbol") or normalized
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
-            info = _ex.submit(lambda: yf.Ticker(symbol).info or {}).result(timeout=2.5)
+        info = _with_deadline(lambda: yf.Ticker(symbol).info or {}, 2.5)
         for key, value in {
             "name": info.get("longName") or info.get("shortName"),
             "sector": info.get("sector"),
@@ -251,8 +278,7 @@ def _tavily_grounding(ticker: str, incident: str, profile: dict) -> dict:
                 return client.search(**kwargs)
 
         # Hard time-box so a throttled/slow Tavily can never hang the function.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
-            result = _ex.submit(_do_search).result(timeout=TAVILY_TIMEOUT_SECONDS + 1)
+        result = _with_deadline(_do_search, TAVILY_TIMEOUT_SECONDS + 1)
         if not isinstance(result, dict):
             return {}
         items = result.get("results") or []
@@ -541,8 +567,9 @@ triggers + an invalidation. Calibrate stress assumptions to this company, the
 severity ({severity}) and chaos ({chaos_index}) — higher chaos means a deeper
 haircut and wider premium.
 
-Be concise and information-dense: keep each mechanism, counter, outcome and
-rationale under ~30 words. Specifics over adjectives.
+Be terse and information-dense: keep each mechanism, counter, outcome and
+rationale under ~18 words; verdict ≤ 2 short sentences. Specifics over
+adjectives — this keeps the response fast. Output compact JSON.
 
 Return ONLY valid JSON (no markdown):
 {{
@@ -559,17 +586,35 @@ live evidence — statements that could apply to any company are rejected."""
 # ----------------------------------------------------------------------------
 # LLM client + call
 # ----------------------------------------------------------------------------
+def _norm_base_url(url: str | None) -> str | None:
+    """Tolerate a base URL pasted with the endpoint path appended (a common
+    copy-paste from NIM examples). The OpenAI SDK appends /chat/completions
+    itself, so we strip it to avoid a doubled path -> 404."""
+    if not url:
+        return url
+    url = url.strip().rstrip("/")
+    for suffix in ("/chat/completions", "/completions"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)]
+    return url or None
+
+
 def _providers() -> list[dict]:
-    """Ordered LLM providers, best-quality first. Strong models (Kimi, gpt-4o) run
-    the tribunal as one 'unified' call; llama runs the two-stage fallback flow."""
+    """Ordered LLM providers, best-quality first. Strong models (Kimi, MiniMax,
+    gpt-4o) run the tribunal as one 'unified' call; llama runs the two-stage
+    fallback flow. Multiple strong models on separate keys mean a throttled key
+    still leaves a reasoning model before the deterministic fallback."""
     out: list[dict] = []
     openai_key = os.environ.get("OPENAI_API_KEY")
     if openai_key:
         out.append({"key": openai_key, "base_url": None, "model": "gpt-4o",
                     "label": "GPT-4o", "unified": True})
     if KIMI_API_KEY:
-        out.append({"key": KIMI_API_KEY, "base_url": KIMI_BASE_URL, "model": KIMI_MODEL,
-                    "label": "Kimi K2.6", "unified": True})
+        out.append({"key": KIMI_API_KEY, "base_url": _norm_base_url(KIMI_BASE_URL),
+                    "model": KIMI_MODEL, "label": "Kimi K2.6", "unified": True})
+    if MINIMAX_API_KEY:
+        out.append({"key": MINIMAX_API_KEY, "base_url": _norm_base_url(MINIMAX_BASE_URL),
+                    "model": MINIMAX_MODEL, "label": "MiniMax M3", "unified": True})
     nvidia_key = os.environ.get("NVIDIA_API_KEY")
     if nvidia_key:
         out.append({"key": nvidia_key, "base_url": NVIDIA_BASE_URL, "model": NVIDIA_MODEL,
@@ -586,24 +631,33 @@ def _make_client(provider: dict, timeout: float) -> OpenAI:
 
 def _run_one(provider: dict, system_prompt: str, user_prompt: str,
              max_tokens: int, timeout: float) -> tuple[dict | None, str]:
-    """Single completion against one provider. Returns (parsed_json|None, raw_text)."""
-    client = _make_client(provider, timeout)
-    kwargs = dict(
-        model=provider["model"],
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-        max_tokens=max_tokens,
-        timeout=timeout,
-    )
-    try:
+    """Single completion against one provider. Returns (parsed_json|None, raw_text).
+
+    The call runs inside a worker thread with a HARD deadline: a slow or hung NIM
+    response can otherwise blow the function's wall-clock budget because the
+    OpenAI SDK's own timeout does not reliably cut NIM streaming off. The hard
+    deadline guarantees this returns within ~timeout, so the provider loop's
+    budget math holds and the function stays under Vercel's maxDuration."""
+    def _call() -> str:
+        client = _make_client(provider, timeout)
+        kwargs = dict(
+            model=provider["model"],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
         try:
             resp = client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
         except Exception:
             resp = client.chat.completions.create(**kwargs)
-        text = resp.choices[0].message.content or ""
+        return resp.choices[0].message.content or ""
+
+    try:
+        text = _with_deadline(_call, timeout + 2.0)
         return _extract_json(text), text
     except Exception as exc:
         return None, f"__error__: {exc}"
@@ -962,18 +1016,22 @@ def _attach_fallback(ticker, incident, severity, trace_id) -> dict:
 # Per-provider debate (unified single call for strong models, two-stage for llama)
 # ----------------------------------------------------------------------------
 def _debate_via_provider(provider, profile, ticker, incident, chaos_index, severity,
-                         news_block, answer_block, fb, trace_id, t0):
+                         news_block, answer_block, fb, trace_id, t0, call_timeout=None):
     """Produce {bear, bull, judge, assumptions, label} from one provider, or None
-    if it fails. Strong models do ONE unified call; llama runs the two-stage flow."""
+    if it fails. Strong models do ONE unified call; llama runs the two-stage flow.
+    call_timeout (when given) hard-caps the strong-model call so the caller can
+    reserve budget for the llama net."""
     label = provider["label"]
 
     if provider["unified"]:
         span = arize_client.start_span(trace_id=trace_id, name=f"Unified Tribunal — {label}")
         prompt = _unified_prompt(ticker, incident, chaos_index, severity, profile, news_block, answer_block)
-        # Size the timeout to the budget left so the function stays under maxDuration.
-        u_timeout = min(UNIFIED_TIMEOUT_SECONDS, max(JUDGE_MIN_SECONDS, WALL_BUDGET_SECONDS - (time.monotonic() - t0)))
+        # Size the timeout to the budget the caller allotted (keeps the llama
+        # reserve intact) so the function stays under maxDuration.
+        u_timeout = call_timeout if call_timeout else min(
+            UNIFIED_TIMEOUT_SECONDS, max(JUDGE_MIN_SECONDS, WALL_BUDGET_SECONDS - (time.monotonic() - t0)))
         parsed, raw = _run_one(provider, _UNIFIED_SYSTEM, prompt,
-                               max_tokens=1150, timeout=u_timeout)
+                               max_tokens=1700, timeout=u_timeout)
         if not parsed or not isinstance(parsed.get("bear"), dict):
             arize_client.complete_span(
                 trace_id=trace_id, span_id=span["span_id"], inputs={"model": label},
@@ -993,7 +1051,8 @@ def _debate_via_provider(provider, profile, ticker, incident, chaos_index, sever
     # --- llama two-stage fallback ------------------------------------------
     s1 = arize_client.start_span(trace_id=trace_id, name=f"Stage 1 - Bear vs Bull ({label})")
     p1 = _debate_prompt(ticker, incident, chaos_index, severity, profile, news_block, answer_block)
-    parsed1, raw1 = _run_one(provider, _DEBATE_SYSTEM, p1, max_tokens=720, timeout=STAGE_TIMEOUT_SECONDS)
+    s1_timeout = max(JUDGE_MIN_SECONDS, min(STAGE_TIMEOUT_SECONDS, WALL_BUDGET_SECONDS - (time.monotonic() - t0)))
+    parsed1, raw1 = _run_one(provider, _DEBATE_SYSTEM, p1, max_tokens=720, timeout=s1_timeout)
     if not parsed1:
         arize_client.complete_span(
             trace_id=trace_id, span_id=s1["span_id"], inputs={"model": label},
@@ -1067,16 +1126,27 @@ def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) 
     fb = _structured_fallback(ticker, incident, severity, chaos_index, profile)
 
     # --- run the debate through the provider chain (best quality first) ----
+    # Strong models (Kimi, MiniMax) are tried first but capped so they never eat
+    # the reserve kept for the fast, reliable llama net. If a strong model is too
+    # slow or throttled we SKIP to the next provider (continue, not break), so a
+    # real model — at worst llama — always carries the reasoning. The deterministic
+    # fallback only triggers if EVERY provider, llama included, fails.
     result = None
     for provider in providers:
-        # Don't start another provider unless enough budget remains for a real
-        # attempt — keeps total wall-clock bounded when the first one is throttled.
-        if time.monotonic() - t0 > WALL_BUDGET_SECONDS - PROVIDER_MIN_SECONDS:
-            break
+        elapsed = time.monotonic() - t0
+        if provider["unified"]:
+            strong_budget = WALL_BUDGET_SECONDS - LLAMA_RESERVE_SECONDS - elapsed
+            if strong_budget < MIN_UNIFIED_SECONDS:
+                continue  # not enough left for a useful strong attempt → try next/llama
+            call_timeout = min(UNIFIED_TIMEOUT_SECONDS, strong_budget)
+        else:
+            if WALL_BUDGET_SECONDS - elapsed < JUDGE_MIN_SECONDS:
+                break  # nothing left even for the fast net
+            call_timeout = None  # llama sizes its own two-stage timeouts to what remains
         try:
             result = _debate_via_provider(
                 provider, profile, ticker, incident, chaos_index, severity,
-                news_block, answer_block, fb, trace_id, t0)
+                news_block, answer_block, fb, trace_id, t0, call_timeout=call_timeout)
         except Exception:
             result = None
         if result:
