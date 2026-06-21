@@ -109,18 +109,55 @@ CURATED_COMPANY_PROFILES = {
 # ----------------------------------------------------------------------------
 # Company grounding
 # ----------------------------------------------------------------------------
+def _best_quote(ticker: str) -> dict | None:
+    """One Yahoo symbol-search call; pick the best equity match, preferring the
+    Indian .NS/.BO listing for bare Indian names. Works on Vercel (no auth crumb)
+    where yfinance.info is blocked, so this is the reliable identity source."""
+    from lib.portfolio_manager import _yahoo_search
+
+    raw = (ticker or "").strip().upper()
+    quotes = _yahoo_search(raw)
+    if not quotes:
+        return None
+    by_symbol = {str(q.get("symbol", "")): q for q in quotes}
+    for cand in (raw, f"{raw}.NS", f"{raw}.BO"):
+        q = by_symbol.get(cand)
+        if q and q.get("quoteType") == "EQUITY":
+            return q
+    equities = [q for q in quotes if q.get("quoteType") == "EQUITY"]
+    return equities[0] if equities else None
+
+
 def _company_profile(ticker: str) -> dict:
-    """Return a compact, structured company profile for tribunal grounding."""
+    """Resolve ANY US or Indian listed ticker to a grounding profile. Identity
+    (name/sector/industry) comes from Yahoo search — reliable for bare Indian
+    names (KOTAKBANK -> Kotak Mahindra Bank) and on Vercel where yfinance.info is
+    blocked. yfinance then augments with financials/summary when available."""
     normalized = (ticker or "").upper()
     profile = dict(CURATED_COMPANY_PROFILES.get(normalized, {}))
+
+    # 1. Canonical identity via Yahoo search (time-boxed so it can't eat budget).
+    if not (profile.get("name") and profile.get("industry")):
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+                match = _ex.submit(_best_quote, normalized).result(timeout=4.5)
+            if match:
+                profile.setdefault("symbol", str(match.get("symbol") or normalized))
+                profile["name"] = profile.get("name") or match.get("longname") or match.get("shortname")
+                profile["sector"] = profile.get("sector") or match.get("sector")
+                profile["industry"] = profile.get("industry") or match.get("industry")
+        except Exception:
+            pass
+    profile.setdefault("symbol", normalized)
+
+    # 2. Optional financials/summary via yfinance on the RESOLVED symbol. Short
+    #    time-box: blocked on Vercel (fast no-op), only augments locally.
     try:
         import yfinance as yf
 
-        # Time-box the .info fetch: it can be slow locally and is rate-limited on
-        # Vercel. Cap it so the profile step never eats the tribunal's budget; the
-        # curated profile / SECTOR_MAP cover the demo tickers if it times out.
+        symbol = profile.get("symbol") or normalized
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
-            info = _ex.submit(lambda: yf.Ticker(ticker).info or {}).result(timeout=3.5)
+            info = _ex.submit(lambda: yf.Ticker(symbol).info or {}).result(timeout=2.5)
         for key, value in {
             "name": info.get("longName") or info.get("shortName"),
             "sector": info.get("sector"),
@@ -138,6 +175,7 @@ def _company_profile(ticker: str) -> dict:
                 profile[key] = value
     except Exception:
         pass
+
     return profile
 
 
@@ -321,11 +359,14 @@ def _clamp_score(value: Any, default: float) -> float:
 # ----------------------------------------------------------------------------
 _DEBATE_SYSTEM = (
     "You are Aegis_Codex, an institutional crisis-valuation tribunal that staffs a "
-    "Bear analyst and a Bull analyst. You write like a senior public-equity analyst: "
-    "every claim is tied to a named segment, product, customer, geography, margin "
-    "driver, peer or a figure from the live evidence. You never use filler like "
-    "'large liquid franchise', 'pricing power' or 'business mix' unless attached to a "
-    "specific fact. Return strict JSON only, no markdown."
+    "Bear analyst and a Bull analyst. You cover global equities — US and Indian (NSE/BSE) "
+    "listings alike. You draw on your own knowledge of the SPECIFIC company named in the "
+    "prompt: its real revenue segments, products, customers, geographies and named "
+    "competitors, combined with the live evidence provided. Every claim is tied to one of "
+    "those specifics. You never use filler like 'large liquid franchise', 'pricing power', "
+    "'business mix' or 'core revenue streams' unless attached to a concrete, named fact. "
+    "Never fabricate precise figures — if unsure of a number, argue the mechanism "
+    "qualitatively. Return strict JSON only, no markdown."
 )
 
 _JUDGE_SYSTEM = (
@@ -338,18 +379,30 @@ _JUDGE_SYSTEM = (
 )
 
 
-def _debate_prompt(ticker, incident, chaos_index, severity, profile_block, news_block, answer_block) -> str:
-    return f"""Run the adversarial debate for {ticker}.
+def _debate_prompt(ticker, incident, chaos_index, severity, profile, news_block, answer_block) -> str:
+    name = profile.get("name") or ticker
+    sector = profile.get("industry") or profile.get("sector") or "its sector"
+    profile_text = _format_company_context(profile)
+    profile_block = f"\nCOMPANY PROFILE:\n{profile_text}\n" if profile_text else ""
+    return f"""TARGET COMPANY: {name} (ticker {ticker}) — {sector}.
+
+You are running an adversarial investment tribunal on {name}.
 {profile_block}{news_block}{answer_block}
 Incident under review: {incident}
 Chaos index: {chaos_index} (0-1). Severity: {severity}.
 
-Reason like a senior analyst. The BEAR builds a concrete, itemized downside
-dossier: exactly THREE distinct risks, each naming the affected segment/product/
-customer/geography, the transmission mechanism to revenue, margin or multiple,
-and the evidence that would confirm it. The BULL must REBUT each of the bear's
-three risks one-for-one: a genuine mitigant where one exists, otherwise an
-offsetting bright-side, plus the asymmetry the market is missing.
+Draw on your own knowledge of {name}'s ACTUAL business — its real revenue
+segments, products, customers, geographies and named competitors — together with
+the live evidence above. Name them specifically (real segment and competitor
+names, not placeholders). If you are not certain of an exact figure, describe the
+mechanism qualitatively instead of inventing a number.
+
+The BEAR builds a concrete, itemized downside dossier: exactly THREE distinct,
+company-specific risks, each naming the affected segment/product/customer/
+geography, the transmission mechanism to revenue, margin or multiple, and the
+evidence that would confirm it. The BULL must REBUT each of the bear's three
+risks one-for-one: a genuine mitigant where one exists, otherwise an offsetting
+bright-side, plus the asymmetry the market is missing.
 
 Return ONLY valid JSON matching this schema (no markdown):
 {{
@@ -374,12 +427,12 @@ Return ONLY valid JSON matching this schema (no markdown):
   }}
 }}
 
-Scores are 0-10 conviction. Ground every field in {ticker}'s actual business and
+Scores are 0-10 conviction. Ground every field in {name}'s actual business and
 the live evidence above — generic statements that could apply to any company are
 rejected."""
 
 
-def _judge_prompt(ticker, incident, chaos_index, severity, bear, bull) -> str:
+def _judge_prompt(ticker, incident, chaos_index, severity, bear, bull, name="") -> str:
     risk_lines = "\n".join(
         f"  R{i+1}. {r.get('title','')} [{r.get('severity','')}/{r.get('horizon','')}]: {r.get('mechanism','')}"
         for i, r in enumerate(bear.get("risks", []))
@@ -388,7 +441,8 @@ def _judge_prompt(ticker, incident, chaos_index, severity, bear, bull) -> str:
         f"  vs {rb.get('addresses','')} ({rb.get('type','')}): {rb.get('counter','')}"
         for rb in bull.get("rebuttals", [])
     )
-    return f"""You are judging the tribunal on {ticker}.
+    who = f"{name} ({ticker})" if name and name != ticker else ticker
+    return f"""You are judging the tribunal on {who}.
 Incident: {incident}
 Chaos index: {chaos_index} (0-1). Severity: {severity}.
 
@@ -667,17 +721,62 @@ def _clean_assumptions(raw: Any, default: dict) -> dict:
 # ----------------------------------------------------------------------------
 # Deterministic, structured fallback (also analyst-grade)
 # ----------------------------------------------------------------------------
+# Sector-specific risk hints so the deterministic fallback is industry-aware for
+# ANY ticker, not generic boilerplate. Matched by substring against industry/sector.
+_SECTOR_RISK_HINTS = {
+    "bank": ["net interest margin compression", "credit cost and asset-quality normalization", "deposit competition and funding cost"],
+    "financ": ["credit cycle and asset quality", "rate sensitivity and spread compression", "regulatory capital requirements"],
+    "insur": ["claims and underwriting losses", "investment-yield pressure", "regulatory solvency capital"],
+    "semiconduct": ["demand digestion and inventory correction", "customer and order concentration", "export-control and China exposure"],
+    "oil": ["commodity price and refining-margin swings", "regulatory and windfall-tax risk", "energy-transition demand shift"],
+    "gas": ["commodity price and refining-margin swings", "regulatory and windfall-tax risk", "energy-transition demand shift"],
+    "energy": ["commodity-price volatility", "regulatory and tax risk", "energy-transition demand shift"],
+    "pharma": ["pricing and reimbursement pressure", "regulatory/USFDA and patent risk", "pipeline and approval timing"],
+    "drug": ["pricing and reimbursement pressure", "regulatory and patent-cliff risk", "pipeline and approval timing"],
+    "health": ["reimbursement and pricing pressure", "regulatory risk", "utilization and cost trends"],
+    "auto": ["demand cyclicality and inventory", "input-cost and margin pressure", "EV-transition capex and competition"],
+    "software": ["growth deceleration and churn", "AI-capex monetization lag", "valuation-multiple compression"],
+    "technolog": ["growth deceleration", "competitive disruption", "valuation-multiple compression"],
+    "internet": ["user-growth and engagement plateau", "ad-spend cyclicality", "regulatory and privacy risk"],
+    "retail": ["consumer-demand softness", "margin and inventory risk", "e-commerce and competitive pressure"],
+    "aerospace": ["program execution and delivery delays", "defense-budget and order timing", "supply-chain bottlenecks"],
+    "consumer": ["volume and pricing softness", "input-cost inflation", "private-label and competitive pressure"],
+    "industrial": ["cyclical demand softness", "order backlog and book-to-bill", "input-cost pressure"],
+    "telecom": ["ARPU and pricing pressure", "spectrum and capex intensity", "competitive subscriber churn"],
+    "real estate": ["rate sensitivity and cap-rate expansion", "occupancy and leasing risk", "refinancing and leverage"],
+    "metal": ["commodity-price and spread volatility", "demand cyclicality", "input-cost and energy pressure"],
+    "material": ["commodity-price and spread volatility", "demand cyclicality", "input-cost pressure"],
+}
+
+
+def _sector_risks(industry: str, sector: str) -> list[str]:
+    text = f"{industry} {sector}".lower()
+    for key, risks in _SECTOR_RISK_HINTS.items():
+        if key in text:
+            return list(risks[:3])
+    return [
+        "estimate cuts as forward guidance resets",
+        "margin pressure and cost deleverage",
+        "multiple compression as the risk premium rises",
+    ]
+
+
 def _structured_fallback(ticker: str, incident: str, severity: str, chaos_index: float, profile: dict) -> dict:
     name = profile.get("name") or ticker
     industry = profile.get("industry") or profile.get("sector") or "its sector"
-    business = _clean_fragment(profile.get("business_model") or profile.get("summary") or "its core revenue streams")
-    demand = _clean_fragment(profile.get("demand_drivers") or "the next demand cycle")
-    risks_txt = _clean_fragment(profile.get("key_risks") or "estimate risk, cost pressure and multiple compression")
+    business = _clean_fragment(
+        profile.get("business_model") or profile.get("summary")
+        or (f"its {industry} operations" if industry != "its sector" else "its core revenue streams")
+    )
+    demand = _clean_fragment(profile.get("demand_drivers") or f"demand across {industry}")
     peers = _clean_fragment(profile.get("peers") or "direct competitors")
     sev = (severity or "watch").lower()
     trig = incident.strip().rstrip(".") or "the live Watchtower signal"
 
-    risk_tokens = [t.strip() for t in re.split(r",|;| and ", risks_txt) if t.strip()][:3]
+    if profile.get("key_risks"):
+        risk_tokens = [t.strip() for t in re.split(r",|;| and ", _clean_fragment(profile["key_risks"])) if t.strip()][:3]
+    else:
+        risk_tokens = _sector_risks(industry, profile.get("sector") or "")
     while len(risk_tokens) < 3:
         risk_tokens.append("multiple compression as expectations reset")
     bear_risks = [
@@ -822,7 +921,6 @@ def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) 
     news = grounding.get("text", "")
     answer = grounding.get("answer", "")
     sources = grounding.get("sources", [])
-    profile_text = _format_company_context(profile)
     arize_client.complete_span(
         trace_id=trace_id, span_id=news_span["span_id"],
         inputs={"ticker": ticker, "incident": incident},
@@ -830,7 +928,6 @@ def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) 
         status="SUCCESS" if news else "SKIPPED",
     )
 
-    profile_block = (f"\nCOMPANY PROFILE (use these specifics first):\n{profile_text}\n" if profile_text else "")
     news_block = (
         "\nLIVE NEWS EVIDENCE (cite specific facts, figures, products, customers, "
         f"geographies — do NOT write generic statements):\n{news}\n" if news else ""
@@ -844,7 +941,7 @@ def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) 
     s1_span = arize_client.start_span(
         trace_id=trace_id, name=f"Stage 1 - Bear vs Bull ({' -> '.join(candidates)})")
     debate_prompt = _debate_prompt(ticker, incident, chaos_index, severity,
-                                   profile_block, news_block, answer_block)
+                                   profile, news_block, answer_block)
     parsed1, raw1, model1, errs1 = _run_llm(
         client, candidates, _DEBATE_SYSTEM, debate_prompt,
         max_tokens=720, timeout=STAGE1_TIMEOUT_SECONDS)
@@ -872,7 +969,8 @@ def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) 
     if remaining >= JUDGE_MIN_SECONDS:
         s2_span = arize_client.start_span(
             trace_id=trace_id, name=f"Stage 2 - Black Swan Judge ({model1})")
-        judge_prompt = _judge_prompt(ticker, incident, chaos_index, severity, bear, bull)
+        judge_prompt = _judge_prompt(ticker, incident, chaos_index, severity, bear, bull,
+                                     name=profile.get("name") or ticker)
         j_timeout = min(STAGE2_TIMEOUT_SECONDS, remaining)
         parsed2, raw2, model2, errs2 = _run_llm(
             client, [model1], _JUDGE_SYSTEM, judge_prompt,
