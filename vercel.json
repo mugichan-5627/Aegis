@@ -1,7 +1,7 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/tribunal.py",    "use": "@vercel/python", "config": { "maxDuration": 30 } },
+    { "src": "api/tribunal.py",    "use": "@vercel/python", "config": { "maxDuration": 60 } },
     { "src": "api/watchtower.py",  "use": "@vercel/python", "config": { "maxDuration": 30 } },
     { "src": "api/valuation.py",   "use": "@vercel/python", "config": { "maxDuration": 15 } },
     { "src": "api/llm_patch.py",   "use": "@vercel/python", "config": { "maxDuration": 30 } },

@@ -1504,7 +1504,11 @@ async function launchTribunal() {
   tribunalRunning = true;
   const btn = document.getElementById('tri-btn');
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-cpu" style="animation:spin 1s linear infinite;display:inline-block"></i> Tribunal running...';
-  const stream = document.getElementById('debate-stream'); stream.innerHTML = '';
+  const stream = document.getElementById('debate-stream');
+  stream.innerHTML = '<div style="text-align:center;padding:34px 20px;color:var(--muted);font-size:12px">'
+    + '<i class="ti ti-cpu" style="font-size:24px;display:block;margin-bottom:10px;animation:spin 1.4s linear infinite"></i>'
+    + 'Adversarial swarm deliberating — grounding in live news, then Bear vs Bull vs Black Swan Judge.'
+    + '<br><span style="font-size:10px;opacity:0.7">High-reasoning model — institutional-grade depth takes ~15-30s.</span></div>';
   let msgs = DEBATES[ACTIVE] || null;
   let backendTelemetry = null;
 
@@ -1518,7 +1522,7 @@ async function launchTribunal() {
         chaos_index: parseFloat(inc.chaos),
         severity: inc.sev
       })
-    }, 29000);
+    }, 58000);
     if (!data || !Array.isArray(data.rounds)) throw new Error('Malformed tribunal response');
     DEBATES[ACTIVE] = data.rounds;
     msgs = data.rounds;
@@ -1550,6 +1554,7 @@ async function launchTribunal() {
     addMockTribunalTrace(inc.ticker, inc.desc, msgs);
   }
 
+  stream.innerHTML = '';  // clear the deliberating placeholder before rendering
   msgs.forEach((msg, i) => {
     setTimeout(() => {
       document.getElementById('round-num').textContent = i + 1;

@@ -33,22 +33,24 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NVIDIA_MODEL = os.environ.get("NVIDIA_MODEL", "meta/llama-3.1-8b-instruct")
-# Optional higher-reasoning model (e.g. meta/llama-3.3-70b-instruct). Tried first
-# when set; the fast 8B remains the reliable fallback so the demo never stalls.
-NVIDIA_QUALITY_MODEL = os.environ.get("NVIDIA_QUALITY_MODEL")
 
-# Per-stage timeouts. The sum (Tavily + Stage 1 + Stage 2) stays under the 30s
-# Vercel function budget; the frontend waits 29s. Stage 1 gets the most room
-# because it carries the heaviest reasoning load. Tavily uses basic depth so the
-# separate Judge call reliably has time to run within budget.
+# Kimi K2.6 (served via NVIDIA NIM, OpenAI-compatible) — the strongest model we
+# have. Used as the PRIMARY "unified" tribunal model (one rich call produces the
+# whole bear/bull/judge debate); llama-3.1-8b is the fast two-stage fallback when
+# Kimi is unavailable or times out.
+KIMI_API_KEY = os.environ.get("KIMI_API_KEY")
+KIMI_MODEL = os.environ.get("KIMI_MODEL", "moonshotai/kimi-k2.6")
+KIMI_BASE_URL = os.environ.get("KIMI_BASE_URL", NVIDIA_BASE_URL)
+
 TAVILY_TIMEOUT_SECONDS = 6.0
-STAGE1_TIMEOUT_SECONDS = 14.0
-STAGE2_TIMEOUT_SECONDS = 10.0
-# Hard wall: never let a model call push total wall-clock past this. The Judge
-# gets whatever remains; if less than the floor is left it is synthesized
-# deterministically so the function always returns inside the 30s budget.
-WALL_BUDGET_SECONDS = 28.5
-JUDGE_MIN_SECONDS = 4.5
+# Kimi is a 1T-param model: a full unified debate runs ~12-15s warm, ~25-30s cold.
+# llama's two-stage fallback stays tight. Budgets are sized so the high-quality
+# Kimi call always completes (vercel.json maxDuration raised to match).
+UNIFIED_TIMEOUT_SECONDS = 32.0      # Kimi single unified debate call
+STAGE_TIMEOUT_SECONDS = 13.0        # llama two-stage fallback, per call
+WALL_BUDGET_SECONDS = 46.0          # hard ceiling on all LLM work (vercel maxDuration 60)
+PROVIDER_MIN_SECONDS = 12.0         # don't start another provider with less than this left
+JUDGE_MIN_SECONDS = 5.0
 
 DEFAULT_ASSUMPTIONS = {
     "revenue_haircut_pct": 28.5,
@@ -241,10 +243,16 @@ def _tavily_grounding(ticker: str, incident: str, profile: dict) -> dict:
             include_answer=True,
             topic="news",
         )
-        try:
-            result = client.search(timeout=TAVILY_TIMEOUT_SECONDS, **kwargs)
-        except TypeError:
-            result = client.search(**kwargs)
+
+        def _do_search():
+            try:
+                return client.search(timeout=TAVILY_TIMEOUT_SECONDS, **kwargs)
+            except TypeError:
+                return client.search(**kwargs)
+
+        # Hard time-box so a throttled/slow Tavily can never hang the function.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _ex:
+            result = _ex.submit(_do_search).result(timeout=TAVILY_TIMEOUT_SECONDS + 1)
         if not isinstance(result, dict):
             return {}
         items = result.get("results") or []
@@ -491,76 +499,114 @@ Return ONLY valid JSON (no markdown):
 }}"""
 
 
+_UNIFIED_SYSTEM = (
+    "You are Aegis_Codex, an institutional crisis-valuation tribunal. You run THREE "
+    "roles in one pass: a Bear analyst, a Bull analyst, and an impartial Black Swan "
+    "Judge. You cover global equities — US and Indian (NSE/BSE) alike — and draw on "
+    "your own knowledge of the SPECIFIC named company (its real segments, products, "
+    "customers, geographies and competitors) plus the live evidence provided. Every "
+    "claim names a concrete specific; never use filler. The Bull rebuts each Bear risk "
+    "one-for-one. The Judge weighs both sides impartially and issues directional "
+    "guidance (HEDGE/REDUCE/HOLD/ACCUMULATE) with stress assumptions — no option "
+    "structures, strikes or tenors. Never fabricate precise figures; argue the mechanism "
+    "if unsure. Return strict JSON only, no markdown."
+)
+
+
+def _unified_prompt(ticker, incident, chaos_index, severity, profile, news_block, answer_block) -> str:
+    name = profile.get("name") or ticker
+    sector = profile.get("industry") or profile.get("sector") or "its sector"
+    profile_text = _format_company_context(profile)
+    profile_block = f"\nCOMPANY PROFILE:\n{profile_text}\n" if profile_text else ""
+    return f"""TARGET COMPANY: {name} (ticker {ticker}) — {sector}.
+
+Run the full adversarial tribunal on {name}.
+{profile_block}{news_block}{answer_block}
+Incident under review: {incident}
+Chaos index: {chaos_index} (0-1). Severity: {severity}.
+
+Draw on your own knowledge of {name}'s ACTUAL business — its real revenue
+segments, products, customers, geographies and named competitors — plus the live
+evidence above. Name them specifically (real segment and competitor names). If
+unsure of an exact figure, describe the mechanism qualitatively rather than
+inventing a number.
+
+BEAR: exactly THREE distinct, company-specific risks, each naming the affected
+segment/product/customer/geography, the transmission to revenue/margin/multiple,
+and the confirming evidence. BULL: rebut each bear risk one-for-one (a genuine
+mitigant, or an offsetting bright-side) plus the asymmetry the market misses.
+JUDGE: weigh both impartially, uphold the risks that survive, assign probability-
+weighted scenarios (sum ~1.0), and give a directional countermeasure with monitor
+triggers + an invalidation. Calibrate stress assumptions to this company, the
+severity ({severity}) and chaos ({chaos_index}) — higher chaos means a deeper
+haircut and wider premium.
+
+Be concise and information-dense: keep each mechanism, counter, outcome and
+rationale under ~30 words. Specifics over adjectives.
+
+Return ONLY valid JSON (no markdown):
+{{
+  "bear": {{"thesis":"...","risks":[{{"title":"","mechanism":"","severity":"high|medium|low","horizon":"near|mid|structural","evidence":""}},{{"title":"","mechanism":"","severity":"","horizon":"","evidence":""}},{{"title":"","mechanism":"","severity":"","horizon":"","evidence":""}}],"score":7.8}},
+  "bull": {{"thesis":"...","rebuttals":[{{"addresses":"<bear risk title>","type":"mitigant|bright_side","counter":""}},{{"addresses":"","type":"","counter":""}},{{"addresses":"","type":"","counter":""}}],"asymmetry":"","score":6.4}},
+  "judge": {{"verdict":"2-3 sentences naming the decisive risk(s)","key_risks_upheld":["",""],"scenarios":[{{"name":"Bear","probability":0.30,"outcome":""}},{{"name":"Base","probability":0.50,"outcome":""}},{{"name":"Bull","probability":0.20,"outcome":""}}],"recommendation":{{"action":"HEDGE|REDUCE|HOLD|ACCUMULATE","rationale":"","monitor":["",""],"invalidation":""}},"score":9.0}},
+  "proposed_assumptions": {{"revenue_haircut_pct": <0-60>, "margin_compression_bps": <0-800>, "wacc_premium_bps": <0-700>, "terminal_growth_delta": <negative>}}
+}}
+
+Scores are 0-10 conviction. Ground every field in {name}'s actual business and the
+live evidence — statements that could apply to any company are rejected."""
+
+
 # ----------------------------------------------------------------------------
 # LLM client + call
 # ----------------------------------------------------------------------------
-def _client_and_model() -> tuple[OpenAI | None, str | None]:
-    openai_key = os.environ.get("OPENAI_API_KEY", None)
+def _providers() -> list[dict]:
+    """Ordered LLM providers, best-quality first. Strong models (Kimi, gpt-4o) run
+    the tribunal as one 'unified' call; llama runs the two-stage fallback flow."""
+    out: list[dict] = []
+    openai_key = os.environ.get("OPENAI_API_KEY")
     if openai_key:
-        return OpenAI(api_key=openai_key, timeout=STAGE1_TIMEOUT_SECONDS, max_retries=0), "gpt-4o"
-
-    nvidia_key = os.environ.get("NVIDIA_API_KEY", None)
+        out.append({"key": openai_key, "base_url": None, "model": "gpt-4o",
+                    "label": "GPT-4o", "unified": True})
+    if KIMI_API_KEY:
+        out.append({"key": KIMI_API_KEY, "base_url": KIMI_BASE_URL, "model": KIMI_MODEL,
+                    "label": "Kimi K2.6", "unified": True})
+    nvidia_key = os.environ.get("NVIDIA_API_KEY")
     if nvidia_key:
-        return OpenAI(
-            api_key=nvidia_key,
-            base_url=NVIDIA_BASE_URL,
-            timeout=STAGE1_TIMEOUT_SECONDS,
-            max_retries=0,
-        ), NVIDIA_MODEL
-
-    return None, None
+        out.append({"key": nvidia_key, "base_url": NVIDIA_BASE_URL, "model": NVIDIA_MODEL,
+                    "label": "Llama 3.1 8B", "unified": False})
+    return out
 
 
-def _model_candidates(primary: str | None) -> list[str]:
-    if not primary:
-        return []
-    candidates = []
-    if NVIDIA_QUALITY_MODEL:
-        candidates.append(NVIDIA_QUALITY_MODEL)
-    candidates.append(primary)
-    if primary != "meta/llama-3.1-8b-instruct" and "nvidia" in NVIDIA_BASE_URL:
-        candidates.append("meta/llama-3.1-8b-instruct")
-    return list(dict.fromkeys(candidates))
+def _make_client(provider: dict, timeout: float) -> OpenAI:
+    if provider.get("base_url"):
+        return OpenAI(api_key=provider["key"], base_url=provider["base_url"],
+                      timeout=timeout, max_retries=0)
+    return OpenAI(api_key=provider["key"], timeout=timeout, max_retries=0)
 
 
-def _run_llm(
-    client: OpenAI,
-    candidates: list[str],
-    system_prompt: str,
-    user_prompt: str,
-    max_tokens: int,
-    timeout: float,
-) -> tuple[dict | None, str, str | None, list[str]]:
-    parsed, text = None, ""
-    selected = candidates[0] if candidates else None
-    errors: list[str] = []
-    for candidate in candidates:
-        kwargs = dict(
-            model=candidate,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.3,
-            max_tokens=max_tokens,
-            timeout=timeout,
-        )
+def _run_one(provider: dict, system_prompt: str, user_prompt: str,
+             max_tokens: int, timeout: float) -> tuple[dict | None, str]:
+    """Single completion against one provider. Returns (parsed_json|None, raw_text)."""
+    client = _make_client(provider, timeout)
+    kwargs = dict(
+        model=provider["model"],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        max_tokens=max_tokens,
+        timeout=timeout,
+    )
+    try:
         try:
-            try:
-                response = client.chat.completions.create(
-                    response_format={"type": "json_object"}, **kwargs
-                )
-            except Exception:
-                response = client.chat.completions.create(**kwargs)
-            text = response.choices[0].message.content or ""
-            parsed = _extract_json(text)
-            if parsed:
-                selected = candidate
-                break
-            errors.append(f"{candidate}: JSON parse failure")
-        except Exception as exc:
-            errors.append(f"{candidate}: {exc}")
-    return parsed, text, selected, errors
+            resp = client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
+        except Exception:
+            resp = client.chat.completions.create(**kwargs)
+        text = resp.choices[0].message.content or ""
+        return _extract_json(text), text
+    except Exception as exc:
+        return None, f"__error__: {exc}"
 
 
 # ----------------------------------------------------------------------------
@@ -716,6 +762,21 @@ def _clean_assumptions(raw: Any, default: dict) -> dict:
     out["wacc_premium_bps"] = int(max(0, min(700, out["wacc_premium_bps"])))
     out["terminal_growth_delta"] = max(-4.0, min(0.0, out["terminal_growth_delta"]))
     return out
+
+
+def _floor_assumptions(raw: Any, chaos_index: float, severity: str) -> dict:
+    """Clamp model-proposed stress assumptions to a chaos/severity floor so a
+    lowballing model can never soften below what the live signal implies (higher
+    chaos => deeper haircut, wider premium). The model may always go deeper."""
+    floor = _stress_from_signal(chaos_index, severity)
+    if not raw:
+        return _clean_assumptions(floor, DEFAULT_ASSUMPTIONS)
+    a = _clean_assumptions(raw, DEFAULT_ASSUMPTIONS)
+    a["revenue_haircut_pct"] = max(a["revenue_haircut_pct"], floor["revenue_haircut_pct"])
+    a["margin_compression_bps"] = max(a["margin_compression_bps"], floor["margin_compression_bps"])
+    a["wacc_premium_bps"] = max(a["wacc_premium_bps"], floor["wacc_premium_bps"])
+    a["terminal_growth_delta"] = min(a["terminal_growth_delta"], floor["terminal_growth_delta"])
+    return a
 
 
 # ----------------------------------------------------------------------------
@@ -898,24 +959,94 @@ def _attach_fallback(ticker, incident, severity, trace_id) -> dict:
 
 
 # ----------------------------------------------------------------------------
+# Per-provider debate (unified single call for strong models, two-stage for llama)
+# ----------------------------------------------------------------------------
+def _debate_via_provider(provider, profile, ticker, incident, chaos_index, severity,
+                         news_block, answer_block, fb, trace_id, t0):
+    """Produce {bear, bull, judge, assumptions, label} from one provider, or None
+    if it fails. Strong models do ONE unified call; llama runs the two-stage flow."""
+    label = provider["label"]
+
+    if provider["unified"]:
+        span = arize_client.start_span(trace_id=trace_id, name=f"Unified Tribunal — {label}")
+        prompt = _unified_prompt(ticker, incident, chaos_index, severity, profile, news_block, answer_block)
+        # Size the timeout to the budget left so the function stays under maxDuration.
+        u_timeout = min(UNIFIED_TIMEOUT_SECONDS, max(JUDGE_MIN_SECONDS, WALL_BUDGET_SECONDS - (time.monotonic() - t0)))
+        parsed, raw = _run_one(provider, _UNIFIED_SYSTEM, prompt,
+                               max_tokens=1150, timeout=u_timeout)
+        if not parsed or not isinstance(parsed.get("bear"), dict):
+            arize_client.complete_span(
+                trace_id=trace_id, span_id=span["span_id"], inputs={"model": label},
+                outputs={"raw": raw[:300]}, status="ERROR", metadata={"error": "parse/empty"})
+            return None
+        bear = _build_bear_round(parsed.get("bear", {}), fb)
+        bull = _build_bull_round(parsed.get("bull", {}), fb)
+        judge = _build_judge_round(parsed.get("judge", {}), fb, bear["score"], bull["score"],
+                                   chaos_index, severity)
+        assumptions = _floor_assumptions(parsed.get("proposed_assumptions"), chaos_index, severity)
+        arize_client.complete_span(
+            trace_id=trace_id, span_id=span["span_id"], inputs={"model": label},
+            outputs={"bear": bear["text"][:200], "judge": judge["text"][:200]},
+            status="SUCCESS", metadata={"selected_model": provider["model"]})
+        return {"bear": bear, "bull": bull, "judge": judge, "assumptions": assumptions, "label": label}
+
+    # --- llama two-stage fallback ------------------------------------------
+    s1 = arize_client.start_span(trace_id=trace_id, name=f"Stage 1 - Bear vs Bull ({label})")
+    p1 = _debate_prompt(ticker, incident, chaos_index, severity, profile, news_block, answer_block)
+    parsed1, raw1 = _run_one(provider, _DEBATE_SYSTEM, p1, max_tokens=720, timeout=STAGE_TIMEOUT_SECONDS)
+    if not parsed1:
+        arize_client.complete_span(
+            trace_id=trace_id, span_id=s1["span_id"], inputs={"model": label},
+            outputs={"raw": raw1[:300]}, status="ERROR", metadata={"error": "parse failure"})
+        return None
+    bear = _build_bear_round(parsed1.get("bear", {}), fb)
+    bull = _build_bull_round(parsed1.get("bull", {}), fb)
+    arize_client.complete_span(
+        trace_id=trace_id, span_id=s1["span_id"], inputs={"ticker": ticker},
+        outputs={"bear": bear["text"][:200], "bull": bull["text"][:200]}, status="SUCCESS")
+
+    remaining = WALL_BUDGET_SECONDS - (time.monotonic() - t0)
+    judge_raw = None
+    if remaining >= JUDGE_MIN_SECONDS:
+        s2 = arize_client.start_span(trace_id=trace_id, name=f"Stage 2 - Black Swan Judge ({label})")
+        p2 = _judge_prompt(ticker, incident, chaos_index, severity, bear, bull,
+                           name=profile.get("name") or ticker)
+        parsed2, raw2 = _run_one(provider, _JUDGE_SYSTEM, p2, max_tokens=560,
+                                 timeout=min(STAGE_TIMEOUT_SECONDS, remaining))
+        if parsed2:
+            judge_raw = parsed2
+            arize_client.complete_span(
+                trace_id=trace_id, span_id=s2["span_id"], inputs={"model": label},
+                outputs={"judge": str(parsed2.get("judge", {}))[:300]}, status="SUCCESS")
+        else:
+            arize_client.complete_span(
+                trace_id=trace_id, span_id=s2["span_id"], inputs={"model": label},
+                outputs={"raw": raw2[:300]}, status="ERROR", metadata={"error": "parse failure"})
+    judge = _build_judge_round((judge_raw or {}).get("judge", {}), fb, bear["score"], bull["score"],
+                               chaos_index, severity)
+    assumptions = _floor_assumptions((judge_raw or {}).get("proposed_assumptions"), chaos_index, severity)
+    return {"bear": bear, "bull": bull, "judge": judge, "assumptions": assumptions, "label": label}
+
+
+# ----------------------------------------------------------------------------
 # Orchestrator
 # ----------------------------------------------------------------------------
 def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) -> dict:
-    """Run the two-stage Bear/Bull -> Judge tribunal with NVIDIA/OpenAI, falling
-    back to a deterministic structured debate when models are unavailable."""
+    """Run the Bear/Bull/Judge tribunal across the provider chain (Kimi K2.6 ->
+    llama-3.1-8b), grounded in live Tavily evidence, falling back to a structured
+    deterministic debate if every provider fails."""
     ticker = (ticker or "NVDA").upper()
     t0 = time.monotonic()
 
     trace = arize_client.create_trace(name=f"Tribunal Debate: {ticker}", ticker=ticker)
     trace_id = trace["trace_id"]
 
-    client, model = _client_and_model()
+    providers = _providers()
     profile = _company_profile(ticker)
-
-    if not client or not model:
+    if not providers:
         return _attach_fallback(ticker, incident, severity, trace_id)
 
-    # --- Stage 0: live grounding -------------------------------------------
+    # --- live grounding ----------------------------------------------------
     news_span = arize_client.start_span(trace_id=trace_id, name="Tavily News Retrieval")
     grounding = _tavily_grounding(ticker, incident, profile)
     news = grounding.get("text", "")
@@ -933,78 +1064,29 @@ def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) 
         f"geographies — do NOT write generic statements):\n{news}\n" if news else ""
     )
     answer_block = (f"\nSEARCH SYNTHESIS: {answer}\n" if answer else "")
-
-    candidates = _model_candidates(model)
     fb = _structured_fallback(ticker, incident, severity, chaos_index, profile)
 
-    # --- Stage 1: Bear + Bull adversarial debate ---------------------------
-    s1_span = arize_client.start_span(
-        trace_id=trace_id, name=f"Stage 1 - Bear vs Bull ({' -> '.join(candidates)})")
-    debate_prompt = _debate_prompt(ticker, incident, chaos_index, severity,
-                                   profile, news_block, answer_block)
-    parsed1, raw1, model1, errs1 = _run_llm(
-        client, candidates, _DEBATE_SYSTEM, debate_prompt,
-        max_tokens=720, timeout=STAGE1_TIMEOUT_SECONDS)
+    # --- run the debate through the provider chain (best quality first) ----
+    result = None
+    for provider in providers:
+        # Don't start another provider unless enough budget remains for a real
+        # attempt — keeps total wall-clock bounded when the first one is throttled.
+        if time.monotonic() - t0 > WALL_BUDGET_SECONDS - PROVIDER_MIN_SECONDS:
+            break
+        try:
+            result = _debate_via_provider(
+                provider, profile, ticker, incident, chaos_index, severity,
+                news_block, answer_block, fb, trace_id, t0)
+        except Exception:
+            result = None
+        if result:
+            break
 
-    if not parsed1:
-        arize_client.complete_span(
-            trace_id=trace_id, span_id=s1_span["span_id"],
-            inputs={"prompt": debate_prompt[:400]}, outputs={"raw": raw1[:400]},
-            status="ERROR", metadata={"error": "; ".join(errs1) or "parse failure"})
+    if not result:
         return _attach_fallback(ticker, incident, severity, trace_id)
 
-    bear = _build_bear_round(parsed1.get("bear", {}), fb)
-    bull = _build_bull_round(parsed1.get("bull", {}), fb)
-    arize_client.complete_span(
-        trace_id=trace_id, span_id=s1_span["span_id"],
-        inputs={"ticker": ticker, "incident": incident},
-        outputs={"bear": bear["text"], "bull": bull["text"]},
-        status="SUCCESS", metadata={"selected_model": model1})
-
-    # --- Stage 2: separate, impartial Judge --------------------------------
-    # Always attempt the real second call whenever enough wall-clock remains;
-    # the timeout is sized to the time left so the function stays under budget.
-    remaining = WALL_BUDGET_SECONDS - (time.monotonic() - t0)
-    judge_raw = None
-    if remaining >= JUDGE_MIN_SECONDS:
-        s2_span = arize_client.start_span(
-            trace_id=trace_id, name=f"Stage 2 - Black Swan Judge ({model1})")
-        judge_prompt = _judge_prompt(ticker, incident, chaos_index, severity, bear, bull,
-                                     name=profile.get("name") or ticker)
-        j_timeout = min(STAGE2_TIMEOUT_SECONDS, remaining)
-        parsed2, raw2, model2, errs2 = _run_llm(
-            client, [model1], _JUDGE_SYSTEM, judge_prompt,
-            max_tokens=560, timeout=j_timeout)
-        if parsed2:
-            judge_raw = parsed2
-            arize_client.complete_span(
-                trace_id=trace_id, span_id=s2_span["span_id"],
-                inputs={"bear": bear["text"][:200], "bull": bull["text"][:200]},
-                outputs={"judge": str(parsed2.get("judge", {}))[:400]},
-                status="SUCCESS", metadata={"selected_model": model2})
-        else:
-            arize_client.complete_span(
-                trace_id=trace_id, span_id=s2_span["span_id"],
-                inputs={"prompt": judge_prompt[:300]}, outputs={"raw": raw2[:300]},
-                status="ERROR", metadata={"error": "; ".join(errs2) or "parse failure"})
-    # else: over budget — synthesize the judge deterministically below.
-
-    judge = _build_judge_round(
-        (judge_raw or {}).get("judge", {}), fb, bear["score"], bull["score"],
-        chaos_index, severity)
-
-    floor = _stress_from_signal(chaos_index, severity)
-    if judge_raw and judge_raw.get("proposed_assumptions"):
-        assumptions = _clean_assumptions(judge_raw["proposed_assumptions"], DEFAULT_ASSUMPTIONS)
-        # Honour the live signal: chaos/severity set a floor so a lowballing judge
-        # can never soften stress below what the signal implies. A higher chaos
-        # index therefore always produces a deeper haircut and wider premium.
-        assumptions["revenue_haircut_pct"] = max(assumptions["revenue_haircut_pct"], floor["revenue_haircut_pct"])
-        assumptions["margin_compression_bps"] = max(assumptions["margin_compression_bps"], floor["margin_compression_bps"])
-        assumptions["wacc_premium_bps"] = max(assumptions["wacc_premium_bps"], floor["wacc_premium_bps"])
-        assumptions["terminal_growth_delta"] = min(assumptions["terminal_growth_delta"], floor["terminal_growth_delta"])
-    else:
-        assumptions = _clean_assumptions(floor, DEFAULT_ASSUMPTIONS)
+    bear, bull, judge = result["bear"], result["bull"], result["judge"]
+    assumptions = result["assumptions"]
 
     # --- per-role spans (so each advocate shows in the trace) --------------
     for r in (bear, bull, judge):
@@ -1024,5 +1106,6 @@ def run_tribunal(ticker: str, incident: str, chaos_index: float, severity: str) 
         "bull_score": bull["score"],
         "sources": sources,
         "grounded": bool(news),
+        "model": result["label"],
         "telemetry": _snapshot_trace(trace_id),
     }

@@ -129,7 +129,35 @@ class DevRequestHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+def _prewarm() -> None:
+    """Fire a tiny Kimi K2.6 call in the background so the first real tribunal of
+    the demo hits a warm NIM instance (~7s) instead of a cold start (~19s)."""
+    try:
+        import os
+        from openai import OpenAI
+
+        key = os.environ.get("KIMI_API_KEY")
+        if not key:
+            return
+        client = OpenAI(
+            api_key=key,
+            base_url=os.environ.get("KIMI_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+            timeout=40,
+            max_retries=0,
+        )
+        client.chat.completions.create(
+            model=os.environ.get("KIMI_MODEL", "moonshotai/kimi-k2.6"),
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+        )
+        print(" Kimi K2.6 pre-warmed.")
+    except Exception:
+        pass
+
+
 def run(port=3000):
+    import threading
+    threading.Thread(target=_prewarm, daemon=True).start()
     server_address = ('', port)
     httpd = ThreadingHTTPServer(server_address, DevRequestHandler)
     print(f"\n========================================================")
